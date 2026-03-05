@@ -16,7 +16,7 @@
 - Module: `github.com/jasonwillschiu/buildybud`
 - Entry point: `main.go`
 - Config file: `buildybud.toml` (repo root)
-- Install: `go install github.com/jasonwillschiu/buildybud@v0.3.0`
+- Install: `go install github.com/jasonwillschiu/buildybud@v0.3.1`
 
 ## Hard Invariants
 - `envOrDefault` accepts variadic keys: checked in order, last arg is the fallback value.

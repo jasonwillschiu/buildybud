@@ -5,7 +5,7 @@
 ## Install
 
 ```bash
-go install github.com/jasonwillschiu/buildybud@v0.2.0
+go install github.com/jasonwillschiu/buildybud@v0.3.1
 ```
 
 ## Set Up In A Repo

@@ -88,6 +88,7 @@ Base all updates on:
 - Major changes → Expand relevant sections with details
 - Minor changes → Add 1-2 line summary in appropriate section
 - This is the **canonical detailed reference** — CLAUDE.md and AGENTS.md point here
+- Update the `go install` to the latest version in the form of `v1.2.3`, not latest
 
 ---
 

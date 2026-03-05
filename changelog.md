@@ -1,3 +1,6 @@
+# 0.3.1 - Update: Docs prompt versioning rule
+- Add rule to update `go install` version to exact semver (not `latest`) in README.md.
+
 # 0.3.0 - Add: BB_-prefixed env var aliases and release task
 - Support `BB_` prefixed env vars (e.g., `BB_APP_BASE_URL`) alongside unprefixed names for clearer repo-local scoping.
 - Refactor `envOrDefault` to accept variadic keys with ordered fallback.
