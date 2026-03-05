@@ -84,12 +84,12 @@ func RootHelp() string {
   buildybud cdn plan-and-purge --from-ref <ref> [--provider bunny|cloudflare]
 
 Environment:
-  APP_BASE_URL         Required for plan and for purge when using relative paths
-  CDN_PROVIDER         Optional default provider: bunny or cloudflare
-  CDN_PURGE_HOSTS      Optional comma-separated hostnames to purge
-  BUNNY_API_KEY        Required when provider=bunny
-  CF_API_TOKEN         Required when provider=cloudflare
-  CF_ZONE_ID           Required when provider=cloudflare
+  APP_BASE_URL / BB_APP_BASE_URL           Required for plan and for purge when using relative paths
+  CDN_PROVIDER / BB_CDN_PROVIDER           Optional default provider: bunny or cloudflare
+  CDN_PURGE_HOSTS / BB_CDN_PURGE_HOSTS     Optional comma-separated hostnames to purge
+  BUNNY_API_KEY / BB_BUNNY_API_KEY         Required when provider=bunny
+  CF_API_TOKEN / BB_CF_API_TOKEN           Required when provider=cloudflare
+  CF_ZONE_ID / BB_CF_ZONE_ID               Required when provider=cloudflare
 `
 }
 
@@ -106,8 +106,8 @@ func Plan(args []string) error {
 	}
 	fromRef := fs.String("from-ref", "", "Git ref representing the currently deployed revision")
 	toRef := fs.String("to-ref", "HEAD", "Git ref representing the target revision")
-	baseURL := fs.String("base-url", envOrDefault("APP_BASE_URL", ""), "Canonical site base URL")
-	purgeHosts := fs.String("purge-hosts", envOrDefault("CDN_PURGE_HOSTS", ""), "Comma-separated hostnames to purge")
+	baseURL := fs.String("base-url", envOrDefault("APP_BASE_URL", "BB_APP_BASE_URL", ""), "Canonical site base URL")
+	purgeHosts := fs.String("purge-hosts", envOrDefault("CDN_PURGE_HOSTS", "BB_CDN_PURGE_HOSTS", ""), "Comma-separated hostnames to purge")
 	provider := fs.String("provider", string(defaultProvider()), "CDN provider: bunny or cloudflare")
 	verbose := fs.Bool("verbose", false, "Print route planning reasons")
 	if err := fs.Parse(args); err != nil {
@@ -145,11 +145,11 @@ func Purge(args []string) error {
 		fmt.Fprint(os.Stderr, RootHelp())
 	}
 	provider := fs.String("provider", string(defaultProvider()), "CDN provider: bunny or cloudflare")
-	baseURL := fs.String("base-url", envOrDefault("APP_BASE_URL", ""), "Canonical site base URL")
-	purgeHosts := fs.String("purge-hosts", envOrDefault("CDN_PURGE_HOSTS", ""), "Comma-separated hostnames to purge")
-	bunnyAPIKey := fs.String("bunny-api-key", envOrDefault("BUNNY_API_KEY", ""), "Bunny API key")
-	cloudflareToken := fs.String("cf-api-token", envOrDefault("CF_API_TOKEN", ""), "Cloudflare API token")
-	cloudflareZoneID := fs.String("cf-zone-id", envOrDefault("CF_ZONE_ID", ""), "Cloudflare zone ID")
+	baseURL := fs.String("base-url", envOrDefault("APP_BASE_URL", "BB_APP_BASE_URL", ""), "Canonical site base URL")
+	purgeHosts := fs.String("purge-hosts", envOrDefault("CDN_PURGE_HOSTS", "BB_CDN_PURGE_HOSTS", ""), "Comma-separated hostnames to purge")
+	bunnyAPIKey := fs.String("bunny-api-key", envOrDefault("BUNNY_API_KEY", "BB_BUNNY_API_KEY", ""), "Bunny API key")
+	cloudflareToken := fs.String("cf-api-token", envOrDefault("CF_API_TOKEN", "BB_CF_API_TOKEN", ""), "Cloudflare API token")
+	cloudflareZoneID := fs.String("cf-zone-id", envOrDefault("CF_ZONE_ID", "BB_CF_ZONE_ID", ""), "Cloudflare zone ID")
 	dryRun := fs.Bool("dry-run", false, "Print URLs without calling the CDN provider")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -204,12 +204,12 @@ func PlanAndPurge(args []string) error {
 	}
 	fromRef := fs.String("from-ref", "", "Git ref representing the currently deployed revision")
 	toRef := fs.String("to-ref", "HEAD", "Git ref representing the target revision")
-	baseURL := fs.String("base-url", envOrDefault("APP_BASE_URL", ""), "Canonical site base URL")
-	purgeHosts := fs.String("purge-hosts", envOrDefault("CDN_PURGE_HOSTS", ""), "Comma-separated hostnames to purge")
+	baseURL := fs.String("base-url", envOrDefault("APP_BASE_URL", "BB_APP_BASE_URL", ""), "Canonical site base URL")
+	purgeHosts := fs.String("purge-hosts", envOrDefault("CDN_PURGE_HOSTS", "BB_CDN_PURGE_HOSTS", ""), "Comma-separated hostnames to purge")
 	provider := fs.String("provider", string(defaultProvider()), "CDN provider: bunny or cloudflare")
-	bunnyAPIKey := fs.String("bunny-api-key", envOrDefault("BUNNY_API_KEY", ""), "Bunny API key")
-	cloudflareToken := fs.String("cf-api-token", envOrDefault("CF_API_TOKEN", ""), "Cloudflare API token")
-	cloudflareZoneID := fs.String("cf-zone-id", envOrDefault("CF_ZONE_ID", ""), "Cloudflare zone ID")
+	bunnyAPIKey := fs.String("bunny-api-key", envOrDefault("BUNNY_API_KEY", "BB_BUNNY_API_KEY", ""), "Bunny API key")
+	cloudflareToken := fs.String("cf-api-token", envOrDefault("CF_API_TOKEN", "BB_CF_API_TOKEN", ""), "Cloudflare API token")
+	cloudflareZoneID := fs.String("cf-zone-id", envOrDefault("CF_ZONE_ID", "BB_CF_ZONE_ID", ""), "Cloudflare zone ID")
 	dryRun := fs.Bool("dry-run", false, "Print URLs without calling the CDN provider")
 	verbose := fs.Bool("verbose", false, "Print route planning reasons")
 	if err := fs.Parse(args); err != nil {
@@ -250,7 +250,7 @@ func PlanAndPurge(args []string) error {
 
 func buildPlan(fromRef, toRef, baseURL, purgeHosts string, verbose bool) (*PlanResult, error) {
 	if strings.TrimSpace(baseURL) == "" {
-		return nil, missingEnvError("APP_BASE_URL", "--base-url", "Set APP_BASE_URL in your environment or .env, or pass --base-url")
+		return nil, missingEnvError("APP_BASE_URL or BB_APP_BASE_URL", "--base-url", "Set APP_BASE_URL or BB_APP_BASE_URL in your environment or .env, or pass --base-url")
 	}
 
 	p := planner{fromRef: fromRef, toRef: toRef, verbose: verbose}
@@ -666,15 +666,15 @@ func purgeURLs(urls []string, cfg purgeConfig) error {
 	switch cfg.Provider {
 	case ProviderBunny:
 		if strings.TrimSpace(cfg.BunnyAPIKey) == "" {
-			return missingEnvError("BUNNY_API_KEY", "--bunny-api-key", "Set BUNNY_API_KEY in your environment or .env, or pass --bunny-api-key")
+			return missingEnvError("BUNNY_API_KEY or BB_BUNNY_API_KEY", "--bunny-api-key", "Set BUNNY_API_KEY or BB_BUNNY_API_KEY in your environment or .env, or pass --bunny-api-key")
 		}
 		return purgeBunnyURLs(urls, cfg.BunnyAPIKey)
 	case ProviderCloudflare:
 		if strings.TrimSpace(cfg.CloudflareAPITok) == "" {
-			return missingEnvError("CF_API_TOKEN", "--cf-api-token", "Set CF_API_TOKEN in your environment or .env, or pass --cf-api-token")
+			return missingEnvError("CF_API_TOKEN or BB_CF_API_TOKEN", "--cf-api-token", "Set CF_API_TOKEN or BB_CF_API_TOKEN in your environment or .env, or pass --cf-api-token")
 		}
 		if strings.TrimSpace(cfg.CloudflareZoneID) == "" {
-			return missingEnvError("CF_ZONE_ID", "--cf-zone-id", "Set CF_ZONE_ID in your environment or .env, or pass --cf-zone-id")
+			return missingEnvError("CF_ZONE_ID or BB_CF_ZONE_ID", "--cf-zone-id", "Set CF_ZONE_ID or BB_CF_ZONE_ID in your environment or .env, or pass --cf-zone-id")
 		}
 		return purgeCloudflareURLs(urls, cfg.CloudflareAPITok, cfg.CloudflareZoneID)
 	default:
@@ -938,15 +938,21 @@ func isAbsoluteURL(value string) bool {
 	return strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://")
 }
 
-func envOrDefault(key, fallback string) string {
-	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
-		return value
+func envOrDefault(keys ...string) string {
+	if len(keys) == 0 {
+		return ""
+	}
+	fallback := keys[len(keys)-1]
+	for _, key := range keys[:len(keys)-1] {
+		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+			return value
+		}
 	}
 	return fallback
 }
 
 func defaultProvider() Provider {
-	if provider, err := parseProvider(envOrDefault("CDN_PROVIDER", string(ProviderBunny))); err == nil {
+	if provider, err := parseProvider(envOrDefault("CDN_PROVIDER", "BB_CDN_PROVIDER", string(ProviderBunny))); err == nil {
 		return provider
 	}
 	return ProviderBunny

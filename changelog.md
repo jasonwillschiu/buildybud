@@ -1,3 +1,9 @@
+# 0.3.0 - Add: BB_-prefixed env var aliases and release task
+- Support `BB_` prefixed env vars (e.g., `BB_APP_BASE_URL`) alongside unprefixed names for clearer repo-local scoping.
+- Refactor `envOrDefault` to accept variadic keys with ordered fallback.
+- Add `task release` wiring via `mdrelease`.
+- Update error messages and help text to mention both env var forms.
+
 # 0.2.0 - Add: Repo bootstrap and clearer CLI guidance
 - Add `buildybud init` to scan a repo and generate a starter `buildybud.toml`.
 - Expand root `--help` with setup steps, examples, and documented global flags.

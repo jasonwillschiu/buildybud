@@ -61,14 +61,14 @@ Override config path with `--config` on all subcommands.
 
 Environment variables:
 
-- `APP_BASE_URL`
-- `CDN_PROVIDER` (optional; defaults to `bunny`)
-- `CDN_PURGE_HOSTS` (optional comma-separated hostnames)
-- `BUNNY_API_KEY` (required for Bunny)
-- `CF_API_TOKEN` (required for Cloudflare)
-- `CF_ZONE_ID` (required for Cloudflare)
+- `BB_APP_BASE_URL` or `APP_BASE_URL`
+- `BB_CDN_PROVIDER` or `CDN_PROVIDER` (optional; defaults to `bunny`)
+- `BB_CDN_PURGE_HOSTS` or `CDN_PURGE_HOSTS` (optional comma-separated hostnames)
+- `BB_BUNNY_API_KEY` or `BUNNY_API_KEY` (required for Bunny)
+- `BB_CF_API_TOKEN` or `CF_API_TOKEN` (required for Cloudflare)
+- `BB_CF_ZONE_ID` or `CF_ZONE_ID` (required for Cloudflare)
 
-`buildybud` auto-loads a local `.env` file before command execution. If a required CDN variable is missing, the error tells you which env var or flag to set.
+`buildybud` auto-loads a local `.env` file before command execution. The `BB_` names are the preferred repo-local form so CDN-related variables are clearly scoped; the unprefixed names remain supported for compatibility. If a required CDN variable is missing, the error tells you which env var or flag to set.
 
 ## Taskfile wiring target
 
@@ -79,6 +79,7 @@ Use these task mappings in `jasonchiu-com4`:
 - `task templui-map` -> `buildybud templui-map generate`
 - `task cdn-purge-bunny` -> `buildybud cdn plan-and-purge ...`
 - CSS manifest post-step -> `buildybud manifest --input ... --logical ...`
+- `task release` -> `mdrelease` (publish a new version to GitHub)
 
 ## Notes
 

@@ -35,3 +35,8 @@ tasks:
     deps: [build]
     cmds:
       - ./bin/buildybud doctor
+
+  release:
+    desc: Release new version to github
+    cmds:
+      - mdrelease

@@ -24,3 +24,21 @@ func TestPurgeURLsMissingProviderCredentialsMentionsDotEnv(t *testing.T) {
 		t.Fatalf("expected .env hint, got %v", err)
 	}
 }
+
+func TestEnvOrDefaultPrefersPrefixedAlias(t *testing.T) {
+	t.Setenv("APP_BASE_URL", "")
+	t.Setenv("BB_APP_BASE_URL", "https://example.com")
+
+	if got := envOrDefault("APP_BASE_URL", "BB_APP_BASE_URL", ""); got != "https://example.com" {
+		t.Fatalf("envOrDefault() = %q", got)
+	}
+}
+
+func TestDefaultProviderReadsPrefixedAlias(t *testing.T) {
+	t.Setenv("CDN_PROVIDER", "")
+	t.Setenv("BB_CDN_PROVIDER", "cloudflare")
+
+	if got := defaultProvider(); got != ProviderCloudflare {
+		t.Fatalf("defaultProvider() = %q", got)
+	}
+}
