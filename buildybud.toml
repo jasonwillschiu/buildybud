@@ -1,0 +1,53 @@
+schema_version = 1
+module_path = "jasonchiu-com4"
+strict = true
+
+[paths]
+repo_root = "."
+assets_root = "assets/embed/assets"
+manifest_path = "assets/embed/assets/manifest.json"
+
+[js]
+out_dir = "assets/embed/assets/js"
+hash_length = 8
+src_dirs = ["assets/src/js"]
+copy_dirs = ["assets/src/templui/assets/js"]
+scan_template_dirs = ["ui", "feature"]
+templui_component_dir = "assets/src/templui/assets/js"
+
+[js.dependencies]
+sheet = ["dialog"]
+dropdown = ["popover"]
+selectbox = ["popover"]
+
+[manifest]
+hash_length = 8
+cleanup_stale = true
+
+[images]
+config_path = "tools/imageopt/config.json"
+
+[templui_map]
+mode = "declarative"
+out = "core/templui/generated_routes.go"
+component_dir = "assets/src/templui/assets/js"
+default_components = ["dialog"]
+longest_prefix_match = true
+fail_on_missing_component = true
+
+[[templui_map.rule]]
+prefix = "/"
+components = ["dialog"]
+
+[[templui_map.rule]]
+prefix = "/blog"
+components = ["dialog", "popover"]
+
+[[templui_map.rule]]
+prefix = "/projects"
+components = ["dialog", "selectbox"]
+
+[templui_map.suggest]
+enabled = true
+scan_router = "core/router/router.go"
+scan_dirs = ["ui", "feature"]
