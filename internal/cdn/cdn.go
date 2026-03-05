@@ -250,7 +250,7 @@ func PlanAndPurge(args []string) error {
 
 func buildPlan(fromRef, toRef, baseURL, purgeHosts string, verbose bool) (*PlanResult, error) {
 	if strings.TrimSpace(baseURL) == "" {
-		return nil, errors.New("APP_BASE_URL or --base-url is required")
+		return nil, missingEnvError("APP_BASE_URL", "--base-url", "Set APP_BASE_URL in your environment or .env, or pass --base-url")
 	}
 
 	p := planner{fromRef: fromRef, toRef: toRef, verbose: verbose}
@@ -666,20 +666,24 @@ func purgeURLs(urls []string, cfg purgeConfig) error {
 	switch cfg.Provider {
 	case ProviderBunny:
 		if strings.TrimSpace(cfg.BunnyAPIKey) == "" {
-			return errors.New("BUNNY_API_KEY or --bunny-api-key is required when --provider=bunny")
+			return missingEnvError("BUNNY_API_KEY", "--bunny-api-key", "Set BUNNY_API_KEY in your environment or .env, or pass --bunny-api-key")
 		}
 		return purgeBunnyURLs(urls, cfg.BunnyAPIKey)
 	case ProviderCloudflare:
 		if strings.TrimSpace(cfg.CloudflareAPITok) == "" {
-			return errors.New("CF_API_TOKEN or --cf-api-token is required when --provider=cloudflare")
+			return missingEnvError("CF_API_TOKEN", "--cf-api-token", "Set CF_API_TOKEN in your environment or .env, or pass --cf-api-token")
 		}
 		if strings.TrimSpace(cfg.CloudflareZoneID) == "" {
-			return errors.New("CF_ZONE_ID or --cf-zone-id is required when --provider=cloudflare")
+			return missingEnvError("CF_ZONE_ID", "--cf-zone-id", "Set CF_ZONE_ID in your environment or .env, or pass --cf-zone-id")
 		}
 		return purgeCloudflareURLs(urls, cfg.CloudflareAPITok, cfg.CloudflareZoneID)
 	default:
 		return fmt.Errorf("unsupported CDN provider: %s", cfg.Provider)
 	}
+}
+
+func missingEnvError(envName, flagName, help string) error {
+	return fmt.Errorf("%s is required (%s). %s", envName, flagName, help)
 }
 
 func purgeBunnyURLs(urls []string, bunnyAPIKey string) error {

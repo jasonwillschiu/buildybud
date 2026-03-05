@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -125,7 +126,11 @@ func Load(path string) (*Config, error) {
 
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("config not found: %s", path)
+			absPath, absErr := filepath.Abs(path)
+			if absErr != nil {
+				absPath = path
+			}
+			return nil, fmt.Errorf("missing %s at %s; run `buildybud init` in the repo root or pass --config <path>", DefaultPath, absPath)
 		}
 		return nil, err
 	}
@@ -193,4 +198,190 @@ func (c *Config) RepoPath(rel string) string {
 		return filepath.Clean(rel)
 	}
 	return filepath.Clean(filepath.Join(c.Paths.RepoRoot, rel))
+}
+
+func Init(repoRoot, path string, force bool) error {
+	if repoRoot == "" {
+		repoRoot = "."
+	}
+	if path == "" {
+		path = filepath.Join(repoRoot, DefaultPath)
+	}
+	if !force {
+		if _, err := os.Stat(path); err == nil {
+			return fmt.Errorf("%s already exists at %s; rerun with --force to overwrite it", DefaultPath, path)
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+	}
+
+	cfg, err := Discover(repoRoot)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, cfg.MarshalTOML(), 0o644); err != nil {
+		return err
+	}
+	return nil
+}
+
+func Discover(repoRoot string) (*Config, error) {
+	root, err := filepath.Abs(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	cfg := Default()
+	cfg.Paths.RepoRoot = "."
+	cfg.ModulePath = detectModulePath(root)
+	cfg.Paths.AssetsRoot = detectExisting(root, "assets/embed/assets", "assets")
+	cfg.Paths.ManifestPath = filepath.ToSlash(filepath.Join(cfg.Paths.AssetsRoot, "manifest.json"))
+	cfg.JS.OutDir = filepath.ToSlash(filepath.Join(cfg.Paths.AssetsRoot, "js"))
+	cfg.JS.SrcDirs = existingDirs(root, "assets/src/js")
+	cfg.JS.CopyDirs = existingDirs(root, "assets/src/templui/assets/js")
+	cfg.JS.ScanTemplateDirs = existingDirs(root, "ui", "feature")
+	cfg.JS.TempluiComponentDir = firstOrDefault(cfg.JS.CopyDirs, cfg.JS.TempluiComponentDir)
+	cfg.Images.ConfigPath = detectExisting(root, "tools/imageopt/config.json", "imageopt/config.json")
+	cfg.TempluiMap.ComponentDir = cfg.JS.TempluiComponentDir
+	cfg.TempluiMap.Out = detectExisting(root, "core/templui/generated_routes.go", "internal/templui/generated_routes.go")
+	cfg.TempluiMap.Suggest.ScanRouter = detectExisting(root, "core/router/router.go", "internal/router/router.go")
+	cfg.TempluiMap.Suggest.ScanDirs = append([]string(nil), cfg.JS.ScanTemplateDirs...)
+	cfg.TempluiMap.Rules = discoverTempluiRules(root)
+	return cfg, nil
+}
+
+func (c *Config) MarshalTOML() []byte {
+	var buf bytes.Buffer
+	writeKV := func(key, value string) {
+		fmt.Fprintf(&buf, "%s = %q\n", key, value)
+	}
+	writeBool := func(key string, value bool) {
+		fmt.Fprintf(&buf, "%s = %t\n", key, value)
+	}
+	writeInt := func(key string, value int) {
+		fmt.Fprintf(&buf, "%s = %d\n", key, value)
+	}
+	writeList := func(key string, values []string) {
+		quoted := make([]string, 0, len(values))
+		for _, value := range values {
+			quoted = append(quoted, fmt.Sprintf("%q", filepath.ToSlash(value)))
+		}
+		fmt.Fprintf(&buf, "%s = [%s]\n", key, strings.Join(quoted, ", "))
+	}
+
+	writeInt("schema_version", c.SchemaVersion)
+	writeKV("module_path", c.ModulePath)
+	writeBool("strict", c.Strict)
+	buf.WriteString("\n[paths]\n")
+	writeKV("repo_root", c.Paths.RepoRoot)
+	writeKV("assets_root", filepath.ToSlash(c.Paths.AssetsRoot))
+	writeKV("manifest_path", filepath.ToSlash(c.Paths.ManifestPath))
+
+	buf.WriteString("\n[js]\n")
+	writeKV("out_dir", filepath.ToSlash(c.JS.OutDir))
+	writeInt("hash_length", c.JS.HashLength)
+	writeList("src_dirs", c.JS.SrcDirs)
+	writeList("copy_dirs", c.JS.CopyDirs)
+	writeList("scan_template_dirs", c.JS.ScanTemplateDirs)
+	writeKV("templui_component_dir", filepath.ToSlash(c.JS.TempluiComponentDir))
+
+	buf.WriteString("\n[js.dependencies]\n")
+	depNames := make([]string, 0, len(c.JS.Dependencies))
+	for name := range c.JS.Dependencies {
+		depNames = append(depNames, name)
+	}
+	sort.Strings(depNames)
+	for _, name := range depNames {
+		writeList(name, c.JS.Dependencies[name])
+	}
+
+	buf.WriteString("\n[manifest]\n")
+	writeInt("hash_length", c.Manifest.HashLength)
+	writeBool("cleanup_stale", c.Manifest.CleanupStale)
+
+	buf.WriteString("\n[images]\n")
+	writeKV("config_path", filepath.ToSlash(c.Images.ConfigPath))
+
+	buf.WriteString("\n[templui_map]\n")
+	writeKV("mode", c.TempluiMap.Mode)
+	writeKV("out", filepath.ToSlash(c.TempluiMap.Out))
+	writeKV("component_dir", filepath.ToSlash(c.TempluiMap.ComponentDir))
+	writeList("default_components", c.TempluiMap.DefaultComponents)
+	writeBool("longest_prefix_match", c.TempluiMap.LongestPrefixMatch)
+	writeBool("fail_on_missing_component", c.TempluiMap.FailOnMissingComponent)
+	for _, rule := range c.TempluiMap.Rules {
+		buf.WriteString("\n[[templui_map.rule]]\n")
+		writeKV("prefix", rule.Prefix)
+		writeList("components", rule.Components)
+	}
+
+	buf.WriteString("\n[templui_map.suggest]\n")
+	writeBool("enabled", c.TempluiMap.Suggest.Enabled)
+	writeKV("scan_router", filepath.ToSlash(c.TempluiMap.Suggest.ScanRouter))
+	writeList("scan_dirs", c.TempluiMap.Suggest.ScanDirs)
+	return buf.Bytes()
+}
+
+func detectModulePath(repoRoot string) string {
+	goModPath := filepath.Join(repoRoot, "go.mod")
+	data, err := os.ReadFile(goModPath)
+	if err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "module ") {
+				module := strings.TrimSpace(strings.TrimPrefix(line, "module "))
+				parts := strings.Split(module, "/")
+				return parts[len(parts)-1]
+			}
+		}
+	}
+	return filepath.Base(repoRoot)
+}
+
+func detectExisting(repoRoot string, candidates ...string) string {
+	for _, candidate := range candidates {
+		if candidate == "" {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(repoRoot, filepath.FromSlash(candidate))); err == nil {
+			return candidate
+		}
+	}
+	if len(candidates) == 0 {
+		return ""
+	}
+	return candidates[0]
+}
+
+func existingDirs(repoRoot string, candidates ...string) []string {
+	found := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		info, err := os.Stat(filepath.Join(repoRoot, filepath.FromSlash(candidate)))
+		if err == nil && info.IsDir() {
+			found = append(found, candidate)
+		}
+	}
+	return found
+}
+
+func firstOrDefault(values []string, fallback string) string {
+	if len(values) > 0 {
+		return values[0]
+	}
+	return fallback
+}
+
+func discoverTempluiRules(repoRoot string) []TempluiRule {
+	rules := []TempluiRule{{Prefix: "/", Components: []string{"dialog"}}}
+	if dirExists(filepath.Join(repoRoot, "content", "blog")) {
+		rules = append(rules, TempluiRule{Prefix: "/blog", Components: []string{"dialog", "popover"}})
+	}
+	if dirExists(filepath.Join(repoRoot, "content", "projects")) {
+		rules = append(rules, TempluiRule{Prefix: "/projects", Components: []string{"dialog", "selectbox"}})
+	}
+	return rules
+}
+
+func dirExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
 }

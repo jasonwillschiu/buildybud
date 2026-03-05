@@ -5,12 +5,14 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 
 	"github.com/jasonwillschiu/buildybud/internal/cdn"
 	"github.com/jasonwillschiu/buildybud/internal/changelog"
 	"github.com/jasonwillschiu/buildybud/internal/config"
 	"github.com/jasonwillschiu/buildybud/internal/doctor"
+	"github.com/jasonwillschiu/buildybud/internal/envfile"
 	"github.com/jasonwillschiu/buildybud/internal/images"
 	"github.com/jasonwillschiu/buildybud/internal/js"
 	"github.com/jasonwillschiu/buildybud/internal/manifest"
@@ -50,6 +52,9 @@ func Run(args []string, stdout, stderr io.Writer) int {
 }
 
 func run(args []string, stdout, stderr io.Writer) error {
+	if err := envfile.LoadIfPresent(".env"); err != nil {
+		return fmt.Errorf("failed to load .env: %w", err)
+	}
 	if len(args) > 0 {
 		switch args[0] {
 		case "-h", "-help", "--help":
@@ -69,6 +74,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 			return runJS(args[1:], stderr)
 		case "images":
 			return runImages(args[1:], stderr)
+		case "init":
+			return runInit(args[1:], stdout, stderr)
 		case "doctor":
 			return runDoctor(args[1:], stderr)
 		case "cdn":
@@ -80,6 +87,32 @@ func run(args []string, stdout, stderr io.Writer) error {
 		}
 	}
 	return &usageError{msg: "missing command"}
+}
+
+func runInit(args []string, stdout, stderr io.Writer) error {
+	fs := flag.NewFlagSet("buildybud init", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	repoRoot := fs.String("repo-root", ".", "Repo root to scan for build paths")
+	configPath := fs.String("config", config.DefaultPath, "Path for the generated buildybud TOML config")
+	force := fs.Bool("force", false, "Overwrite an existing config file")
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
+		return &usageError{msg: err.Error()}
+	}
+	if fs.NArg() != 0 {
+		return &usageError{msg: "init does not accept positional arguments"}
+	}
+	if err := config.Init(*repoRoot, *configPath, *force); err != nil {
+		return err
+	}
+	absPath, err := filepath.Abs(*configPath)
+	if err != nil {
+		absPath = *configPath
+	}
+	_, _ = fmt.Fprintf(stdout, "Generated %s\n", absPath)
+	return nil
 }
 
 func runRepoVersion(args []string, stdout, stderr io.Writer) error {
@@ -278,7 +311,15 @@ func printRootUsage(w io.Writer) {
 Usage:
   %s <command> [flags]
 
+Quick start:
+  1. Install: go install github.com/jasonwillschiu/buildybud@%s
+  2. In your repo root: buildybud init
+  3. Check the generated %s and adjust repo-specific paths
+  4. Run buildybud doctor
+  5. Run a command such as buildybud js or buildybud manifest --input ... --logical ...
+
 Commands:
+  init               Scan the repo and generate a starter buildybud.toml
   manifest           Hash a built file and update manifest.json
   js                 Build and hash JS assets, copy templui JS
   images             Generate image variants via vips
@@ -288,7 +329,14 @@ Commands:
   version            Print latest changelog semver
 
 Global Flags:
-  --help             Show help
-  --version          Show CLI version
-`, toolName, ToolVersion, toolName)
+  --help, -h, -help  Show help
+  --version, -version
+                     Show installed CLI version
+
+Examples:
+  %s init
+  %s doctor
+  %s js --config ./buildybud.toml
+  %s cdn purge --provider bunny /blog /projects/demo
+`, toolName, ToolVersion, toolName, ToolVersion, config.DefaultPath, toolName, toolName, toolName, toolName)
 }
