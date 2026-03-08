@@ -6,7 +6,7 @@ It is specifically built for repos using `go-datastar1` templates and the surrou
 ## Install
 
 ```bash
-	go install github.com/jasonwillschiu/buildybud@v0.4.0
+	go install github.com/jasonwillschiu/buildybud@v0.4.1
 ```
 
 ## Set Up In A Repo
@@ -21,7 +21,7 @@ It is specifically built for repos using `go-datastar1` templates and the surrou
 `buildybud init` scans the repo for common directories such as `assets/embed/assets`, `assets/src/js`, `assets/src/templui/assets/js`, `ui`, `feature`, `core/router/router.go`, and `tools/imageopt/config.json`, then writes a starter `buildybud.toml`.
 It also creates `.env.example` when missing and appends any missing CDN-related env vars with comments so repo setup documents the required `.env` shape.
 
-Use `buildybud init --force` to overwrite an existing config. The `.env.example` update is additive: missing documented keys are appended to the end, and existing keys are left in place. Use `--config` on subcommands if the file lives elsewhere.
+Use `buildybud init --force` to overwrite an existing config. The `.env.example` update is additive: missing documented `BB_` keys are appended to the end, and existing keys are left in place. Use `--config` on subcommands if the file lives elsewhere.
 
 ## Commands
 
@@ -72,7 +72,7 @@ Environment variables:
 
 `buildybud` auto-loads a local `.env` file before command execution. The `BB_` names are the preferred repo-local form so CDN-related variables are clearly scoped; the unprefixed names remain supported for compatibility. If a required CDN variable is missing, the error tells you which env var or flag to set.
 
-When `buildybud init` runs, these variables are documented into `.env.example` with comments. If the file already exists, only missing keys are appended.
+When `buildybud init` runs, these variables are documented into `.env.example` with comments using the `BB_` names so it is explicit they belong to `buildybud`. If the file already exists, only missing keys are appended.
 
 ## Taskfile wiring target
 

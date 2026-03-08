@@ -1,3 +1,8 @@
+# 0.4.1 - Fix: Canonicalize BB_ env example vars
+- Change `.env.example` generation to emit only `BB_`-prefixed buildybud variables.
+- Treat legacy unprefixed env names as already documented so reruns do not append duplicate `BB_` entries.
+- Clarify in docs that `.env.example` uses buildybud-scoped variables.
+
 # 0.4.0 - Add: Init writes .env.example
 - Add `.env.example` generation during `buildybud init`, creating the file when missing.
 - Append missing CDN-related env vars with comments at the end instead of duplicating existing keys.

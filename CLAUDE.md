@@ -16,14 +16,14 @@
 - Module: `github.com/jasonwillschiu/buildybud`
 - Entry point: `main.go`
 - Config file: `buildybud.toml` (repo root)
-- Install: `go install github.com/jasonwillschiu/buildybud@v0.4.0`
+- Install: `go install github.com/jasonwillschiu/buildybud@v0.4.1`
 - Primary target: repos using `go-datastar1` templates and the matching asset layout
 
 ## Hard Invariants
 - `envOrDefault` accepts variadic keys: checked in order, last arg is the fallback value.
 - CDN env vars support two forms: unprefixed (`APP_BASE_URL`) and `BB_`-prefixed (`BB_APP_BASE_URL`). Unprefixed is checked first.
 - `.env` file is auto-loaded before command execution.
-- `buildybud init` also maintains `.env.example`: create it if missing, append missing documented env vars, do not duplicate existing keys.
+- `buildybud init` also maintains `.env.example`: create it if missing, append missing documented `BB_` env vars, do not duplicate existing keys or legacy unprefixed aliases.
 - `buildybud.toml` must exist or CLI tells user to run `buildybud init`.
 - `buildybud --version` prints embedded CLI version; `buildybud version` prints changelog version.
 

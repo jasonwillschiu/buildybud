@@ -70,8 +70,8 @@ func TestRunInitGeneratesConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("missing .env.example: %v", err)
 	}
-	if !strings.Contains(string(data), "APP_BASE_URL=") {
-		t.Fatalf(".env.example missing APP_BASE_URL:\n%s", string(data))
+	if !strings.Contains(string(data), "BB_APP_BASE_URL=") {
+		t.Fatalf(".env.example missing BB_APP_BASE_URL:\n%s", string(data))
 	}
 }
 
@@ -104,10 +104,13 @@ func TestRunInitForceAppendsEnvExample(t *testing.T) {
 		t.Fatalf("read .env.example: %v", err)
 	}
 	content := string(data)
-	if strings.Count(content, "APP_BASE_URL=") != 1 {
-		t.Fatalf("expected APP_BASE_URL once:\n%s", content)
+	if strings.Contains(content, "\nAPP_BASE_URL=") || strings.HasPrefix(content, "APP_BASE_URL=") {
+		t.Fatalf("expected legacy APP_BASE_URL to be removed:\n%s", content)
 	}
-	if !strings.Contains(content, "CDN_PROVIDER=") {
+	if strings.Count(content, "BB_APP_BASE_URL=") != 1 {
+		t.Fatalf("expected BB_APP_BASE_URL once:\n%s", content)
+	}
+	if !strings.Contains(content, "BB_CDN_PROVIDER=") {
 		t.Fatalf("expected appended vars in .env.example:\n%s", content)
 	}
 }
