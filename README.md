@@ -1,11 +1,12 @@
 # buildybud
 
 `buildybud` is a single Go CLI that consolidates the local `tools/*` build pipeline used in `jasonchiu-com4` into one installable command.
+It is specifically built for repos using `go-datastar1` templates and the surrounding asset pipeline.
 
 ## Install
 
 ```bash
-go install github.com/jasonwillschiu/buildybud@v0.3.1
+	go install github.com/jasonwillschiu/buildybud@v0.4.0
 ```
 
 ## Set Up In A Repo
@@ -18,8 +19,9 @@ go install github.com/jasonwillschiu/buildybud@v0.3.1
 6. Start replacing local build steps with `buildybud js`, `buildybud images`, `buildybud manifest`, or `buildybud templui-map generate`.
 
 `buildybud init` scans the repo for common directories such as `assets/embed/assets`, `assets/src/js`, `assets/src/templui/assets/js`, `ui`, `feature`, `core/router/router.go`, and `tools/imageopt/config.json`, then writes a starter `buildybud.toml`.
+It also creates `.env.example` when missing and appends any missing CDN-related env vars with comments so repo setup documents the required `.env` shape.
 
-Use `buildybud init --force` to overwrite an existing config. Use `--config` on subcommands if the file lives elsewhere.
+Use `buildybud init --force` to overwrite an existing config. The `.env.example` update is additive: missing documented keys are appended to the end, and existing keys are left in place. Use `--config` on subcommands if the file lives elsewhere.
 
 ## Commands
 
@@ -70,6 +72,8 @@ Environment variables:
 
 `buildybud` auto-loads a local `.env` file before command execution. The `BB_` names are the preferred repo-local form so CDN-related variables are clearly scoped; the unprefixed names remain supported for compatibility. If a required CDN variable is missing, the error tells you which env var or flag to set.
 
+When `buildybud init` runs, these variables are documented into `.env.example` with comments. If the file already exists, only missing keys are appended.
+
 ## Taskfile wiring target
 
 Use these task mappings in `jasonchiu-com4`:
@@ -86,3 +90,4 @@ Use these task mappings in `jasonchiu-com4`:
 - `images` requires `vips` in `PATH`.
 - `templui-map generate` is declarative from TOML rules.
 - `templui-map suggest` is advisory scanner output.
+- The repo assumptions and scan defaults are tuned for `go-datastar1` template layouts.

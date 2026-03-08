@@ -107,11 +107,20 @@ func runInit(args []string, stdout, stderr io.Writer) error {
 	if err := config.Init(*repoRoot, *configPath, *force); err != nil {
 		return err
 	}
+	envExamplePath := filepath.Join(*repoRoot, ".env.example")
+	if err := envfile.AppendExample(envExamplePath); err != nil {
+		return err
+	}
 	absPath, err := filepath.Abs(*configPath)
 	if err != nil {
 		absPath = *configPath
 	}
 	_, _ = fmt.Fprintf(stdout, "Generated %s\n", absPath)
+	if absEnvPath, err := filepath.Abs(envExamplePath); err == nil {
+		_, _ = fmt.Fprintf(stdout, "Updated %s\n", absEnvPath)
+	} else {
+		_, _ = fmt.Fprintf(stdout, "Updated %s\n", envExamplePath)
+	}
 	return nil
 }
 

@@ -1,3 +1,8 @@
+# 0.4.0 - Add: Init writes .env.example
+- Add `.env.example` generation during `buildybud init`, creating the file when missing.
+- Append missing CDN-related env vars with comments at the end instead of duplicating existing keys.
+- Document `buildybud` as a CLI built for `go-datastar1` template repos.
+
 # 0.3.1 - Update: Docs prompt versioning rule
 - Add rule to update `go install` version to exact semver (not `latest`) in README.md.
 
