@@ -1,3 +1,7 @@
+# 0.5.0 - Update: JS dependency defaults
+- Expand the generated JS dependency map so `selectbox`, `datepicker`, and `timepicker` pull in `input` plus `popover`, and `tagsinput` pulls in `popover`.
+- Keep the repo docs and init output aligned with the new default dependency set.
+
 # 0.4.1 - Fix: Canonicalize BB_ env example vars
 - Change `.env.example` generation to emit only `BB_`-prefixed buildybud variables.
 - Treat legacy unprefixed env names as already documented so reruns do not append duplicate `BB_` entries.

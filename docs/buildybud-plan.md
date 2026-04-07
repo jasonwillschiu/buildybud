@@ -97,7 +97,10 @@ templui_component_dir = "assets/src/templui/assets/js"
 [js.dependencies]
 sheet = ["dialog"]
 dropdown = ["popover"]
-selectbox = ["popover"]
+selectbox = ["input", "popover"]
+datepicker = ["input", "popover"]
+timepicker = ["input", "popover"]
+tagsinput = ["popover"]
 
 [manifest]
 hash_length = 8

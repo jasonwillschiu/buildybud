@@ -92,9 +92,12 @@ func Default() *Config {
 			ScanTemplateDirs:    []string{"ui", "feature"},
 			TempluiComponentDir: "assets/src/templui/assets/js",
 			Dependencies: DepConfig{
-				"sheet":     {"dialog"},
-				"dropdown":  {"popover"},
-				"selectbox": {"popover"},
+				"sheet":      {"dialog"},
+				"dropdown":   {"popover"},
+				"selectbox":  {"input", "popover"},
+				"datepicker": {"input", "popover"},
+				"timepicker": {"input", "popover"},
+				"tagsinput":  {"popover"},
 			},
 		},
 		Manifest: ManifestConfig{

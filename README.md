@@ -6,7 +6,7 @@ It is specifically built for repos using `go-datastar1` templates and the surrou
 ## Install
 
 ```bash
-	go install github.com/jasonwillschiu/buildybud@v0.4.1
+	go install github.com/jasonwillschiu/buildybud@v0.5.0
 ```
 
 ## Set Up In A Repo
@@ -20,6 +20,7 @@ It is specifically built for repos using `go-datastar1` templates and the surrou
 
 `buildybud init` scans the repo for common directories such as `assets/embed/assets`, `assets/src/js`, `assets/src/templui/assets/js`, `ui`, `feature`, `core/router/router.go`, and `tools/imageopt/config.json`, then writes a starter `buildybud.toml`.
 It also creates `.env.example` when missing and appends any missing CDN-related env vars with comments so repo setup documents the required `.env` shape.
+The generated JS dependency defaults include `sheet -> dialog`, `dropdown -> popover`, `selectbox -> input + popover`, `datepicker -> input + popover`, `timepicker -> input + popover`, and `tagsinput -> popover`.
 
 Use `buildybud init --force` to overwrite an existing config. The `.env.example` update is additive: missing documented `BB_` keys are appended to the end, and existing keys are left in place. Use `--config` on subcommands if the file lives elsewhere.
 

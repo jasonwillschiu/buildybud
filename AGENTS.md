@@ -16,6 +16,7 @@
 - CDN env vars have two forms: `APP_BASE_URL` and `BB_APP_BASE_URL` (unprefixed checked first)
 - `.env` auto-loaded before command execution
 - `buildybud init` also writes `.env.example`; create if missing, append missing documented `BB_` vars, do not duplicate keys or legacy unprefixed aliases
+- `buildybud init` seeds JS dependency defaults for `selectbox`, `datepicker`, `timepicker`, and `tagsinput`
 - `buildybud.toml` required at repo root; `buildybud init` generates it
 - `--version` = embedded CLI version; `version` subcommand = changelog version
 - `images` command requires `vips` in PATH
