@@ -16,8 +16,24 @@ func Run(cfg *config.Config) error {
 	}{
 		{name: "config", fn: cfg.Validate},
 		{name: "paths", fn: func() error { return checkPaths(cfg) }},
-		{name: "vips", fn: checkVips},
-		{name: "templui-map", fn: func() error { return templuimap.Check(cfg) }},
+	}
+	if cfg.CSS.Enabled {
+		checks = append(checks, struct {
+			name string
+			fn   func() error
+		}{name: "css", fn: func() error { return checkCommand(cfg.CSS.Command) }})
+	}
+	if cfg.Images.Enabled {
+		checks = append(checks, struct {
+			name string
+			fn   func() error
+		}{name: "vips", fn: func() error { return checkCommand("vips") }})
+	}
+	if cfg.TempluiMap.Enabled {
+		checks = append(checks, struct {
+			name string
+			fn   func() error
+		}{name: "templui-map", fn: func() error { return templuimap.Check(cfg) }})
 	}
 
 	for _, check := range checks {
@@ -34,23 +50,38 @@ func checkPaths(cfg *config.Config) error {
 	requiredDirs := []string{
 		cfg.RepoPath(cfg.Paths.RepoRoot),
 		cfg.RepoPath(cfg.Paths.AssetsRoot),
-		cfg.RepoPath(cfg.JS.TempluiComponentDir),
+	}
+	if cfg.JS.Enabled && cfg.JS.TempluiComponentDir != "" {
+		requiredDirs = append(requiredDirs, cfg.RepoPath(cfg.JS.TempluiComponentDir))
+	}
+	if cfg.Favicon.Enabled {
+		requiredDirs = append(requiredDirs, cfg.RepoPath(cfg.Favicon.SourceDir))
 	}
 	for _, p := range requiredDirs {
 		if info, err := os.Stat(p); err != nil || !info.IsDir() {
 			return fmt.Errorf("missing directory: %s", p)
 		}
 	}
-	if _, err := os.Stat(cfg.RepoPath(cfg.Images.ConfigPath)); err != nil {
-		return fmt.Errorf("missing images config: %s", cfg.Images.ConfigPath)
+	if cfg.CSS.Enabled {
+		if _, err := os.Stat(cfg.RepoPath(cfg.CSS.Input)); err != nil {
+			return fmt.Errorf("missing css input: %s", cfg.CSS.Input)
+		}
+	}
+	if cfg.Images.Enabled {
+		if _, err := os.Stat(cfg.RepoPath(cfg.Images.ConfigPath)); err != nil {
+			return fmt.Errorf("missing images config: %s", cfg.Images.ConfigPath)
+		}
 	}
 	return nil
 }
 
-func checkVips() error {
-	_, err := exec.LookPath("vips")
+func checkCommand(command string) error {
+	if command == "" {
+		return fmt.Errorf("command is required")
+	}
+	_, err := exec.LookPath(command)
 	if err != nil {
-		return fmt.Errorf("vips CLI not found in PATH")
+		return fmt.Errorf("%s CLI not found in PATH", command)
 	}
 	return nil
 }

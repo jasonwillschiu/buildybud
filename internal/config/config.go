@@ -19,10 +19,14 @@ type Config struct {
 	ModulePath    string `toml:"module_path"`
 	Strict        bool   `toml:"strict"`
 
+	baseDir string
+
 	Paths      PathsConfig      `toml:"paths"`
+	CSS        CSSConfig        `toml:"css"`
 	JS         JSConfig         `toml:"js"`
 	Manifest   ManifestConfig   `toml:"manifest"`
 	Images     ImagesConfig     `toml:"images"`
+	Favicon    FaviconConfig    `toml:"favicon"`
 	TempluiMap TempluiMapConfig `toml:"templui_map"`
 }
 
@@ -32,7 +36,17 @@ type PathsConfig struct {
 	ManifestPath string `toml:"manifest_path"`
 }
 
+type CSSConfig struct {
+	Enabled bool     `toml:"enabled"`
+	Command string   `toml:"command"`
+	Input   string   `toml:"input"`
+	Output  string   `toml:"output"`
+	Content []string `toml:"content"`
+	Minify  bool     `toml:"minify"`
+}
+
 type JSConfig struct {
+	Enabled             bool      `toml:"enabled"`
 	OutDir              string    `toml:"out_dir"`
 	HashLength          int       `toml:"hash_length"`
 	SrcDirs             []string  `toml:"src_dirs"`
@@ -50,10 +64,19 @@ type ManifestConfig struct {
 }
 
 type ImagesConfig struct {
+	Enabled    bool   `toml:"enabled"`
 	ConfigPath string `toml:"config_path"`
 }
 
+type FaviconConfig struct {
+	Enabled   bool   `toml:"enabled"`
+	SourceDir string `toml:"source_dir"`
+	OutDir    string `toml:"out_dir"`
+	Clean     bool   `toml:"clean"`
+}
+
 type TempluiMapConfig struct {
+	Enabled                bool          `toml:"enabled"`
 	Mode                   string        `toml:"mode"`
 	Out                    string        `toml:"out"`
 	ComponentDir           string        `toml:"component_dir"`
@@ -84,7 +107,21 @@ func Default() *Config {
 			AssetsRoot:   "assets/embed/assets",
 			ManifestPath: "assets/embed/assets/manifest.json",
 		},
+		CSS: CSSConfig{
+			Enabled: true,
+			Command: "tailwindcss",
+			Input:   "assets/src/css/input.css",
+			Output:  "assets/embed/assets/css/app.css",
+			Content: []string{
+				"feature/**/*.templ",
+				"feature/**/*.go",
+				"ui/**/*.templ",
+				"assets/src/templui/**/*.templ",
+			},
+			Minify: true,
+		},
 		JS: JSConfig{
+			Enabled:             true,
 			OutDir:              "assets/embed/assets/js",
 			HashLength:          8,
 			SrcDirs:             []string{"assets/src/js"},
@@ -104,8 +141,15 @@ func Default() *Config {
 			HashLength:   8,
 			CleanupStale: true,
 		},
-		Images: ImagesConfig{ConfigPath: "tools/imageopt/config.json"},
+		Images: ImagesConfig{Enabled: true, ConfigPath: "tools/imageopt/config.json"},
+		Favicon: FaviconConfig{
+			Enabled:   true,
+			SourceDir: "assets/src/favicon",
+			OutDir:    "assets/embed/assets/favicon",
+			Clean:     true,
+		},
 		TempluiMap: TempluiMapConfig{
+			Enabled:                true,
 			Mode:                   "declarative",
 			Out:                    "core/templui/generated_routes.go",
 			ComponentDir:           "assets/src/templui/assets/js",
@@ -127,18 +171,20 @@ func Load(path string) (*Config, error) {
 		path = DefaultPath
 	}
 
-	if _, err := os.Stat(path); err != nil {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		absPath = path
+	}
+
+	if _, err := os.Stat(absPath); err != nil {
 		if os.IsNotExist(err) {
-			absPath, absErr := filepath.Abs(path)
-			if absErr != nil {
-				absPath = path
-			}
 			return nil, fmt.Errorf("missing %s at %s; run `buildybud init` in the repo root or pass --config <path>", DefaultPath, absPath)
 		}
 		return nil, err
 	}
 
-	meta, err := toml.DecodeFile(path, cfg)
+	cfg.baseDir = filepath.Dir(absPath)
+	meta, err := toml.DecodeFile(absPath, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -177,10 +223,32 @@ func (c *Config) Validate() error {
 	if c.Paths.ManifestPath == "" {
 		return errors.New("paths.manifest_path is required")
 	}
-	if c.TempluiMap.Out == "" {
+	if c.CSS.Enabled {
+		if c.CSS.Command == "" {
+			return errors.New("css.command is required when css.enabled is true")
+		}
+		if c.CSS.Input == "" {
+			return errors.New("css.input is required when css.enabled is true")
+		}
+		if c.CSS.Output == "" {
+			return errors.New("css.output is required when css.enabled is true")
+		}
+	}
+	if c.Favicon.Enabled {
+		if c.Favicon.SourceDir == "" {
+			return errors.New("favicon.source_dir is required when favicon.enabled is true")
+		}
+		if c.Favicon.OutDir == "" {
+			return errors.New("favicon.out_dir is required when favicon.enabled is true")
+		}
+	}
+	if c.Images.Enabled && c.Images.ConfigPath == "" {
+		return errors.New("images.config_path is required when images.enabled is true")
+	}
+	if c.TempluiMap.Enabled && c.TempluiMap.Out == "" {
 		return errors.New("templui_map.out is required")
 	}
-	if c.TempluiMap.ComponentDir == "" {
+	if c.TempluiMap.Enabled && c.TempluiMap.ComponentDir == "" {
 		return errors.New("templui_map.component_dir is required")
 	}
 	seen := map[string]bool{}
@@ -197,10 +265,24 @@ func (c *Config) Validate() error {
 }
 
 func (c *Config) RepoPath(rel string) string {
+	if rel == "" {
+		return ""
+	}
 	if filepath.IsAbs(rel) {
 		return filepath.Clean(rel)
 	}
-	return filepath.Clean(filepath.Join(c.Paths.RepoRoot, rel))
+	root := c.Paths.RepoRoot
+	if root == "" {
+		root = "."
+	}
+	if !filepath.IsAbs(root) {
+		base := c.baseDir
+		if base == "" {
+			base = "."
+		}
+		root = filepath.Join(base, root)
+	}
+	return filepath.Clean(filepath.Join(root, rel))
 }
 
 func Init(repoRoot, path string, force bool) error {
@@ -208,7 +290,10 @@ func Init(repoRoot, path string, force bool) error {
 		repoRoot = "."
 	}
 	if path == "" {
-		path = filepath.Join(repoRoot, DefaultPath)
+		path = DefaultPath
+	}
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(repoRoot, path)
 	}
 	if !force {
 		if _, err := os.Stat(path); err == nil {
@@ -234,16 +319,21 @@ func Discover(repoRoot string) (*Config, error) {
 		return nil, err
 	}
 	cfg := Default()
+	cfg.baseDir = root
 	cfg.Paths.RepoRoot = "."
 	cfg.ModulePath = detectModulePath(root)
 	cfg.Paths.AssetsRoot = detectExisting(root, "assets/embed/assets", "assets")
 	cfg.Paths.ManifestPath = filepath.ToSlash(filepath.Join(cfg.Paths.AssetsRoot, "manifest.json"))
+	cfg.CSS.Input = detectExisting(root, "assets/src/css/input.css")
+	cfg.CSS.Output = filepath.ToSlash(filepath.Join(cfg.Paths.AssetsRoot, "css", "app.css"))
 	cfg.JS.OutDir = filepath.ToSlash(filepath.Join(cfg.Paths.AssetsRoot, "js"))
 	cfg.JS.SrcDirs = existingDirs(root, "assets/src/js")
 	cfg.JS.CopyDirs = existingDirs(root, "assets/src/templui/assets/js")
 	cfg.JS.ScanTemplateDirs = existingDirs(root, "ui", "feature")
 	cfg.JS.TempluiComponentDir = firstOrDefault(cfg.JS.CopyDirs, cfg.JS.TempluiComponentDir)
 	cfg.Images.ConfigPath = detectExisting(root, "tools/imageopt/config.json", "imageopt/config.json")
+	cfg.Favicon.SourceDir = detectExisting(root, "assets/src/favicon")
+	cfg.Favicon.OutDir = filepath.ToSlash(filepath.Join(cfg.Paths.AssetsRoot, "favicon"))
 	cfg.TempluiMap.ComponentDir = cfg.JS.TempluiComponentDir
 	cfg.TempluiMap.Out = detectExisting(root, "core/templui/generated_routes.go", "internal/templui/generated_routes.go")
 	cfg.TempluiMap.Suggest.ScanRouter = detectExisting(root, "core/router/router.go", "internal/router/router.go")
@@ -279,7 +369,16 @@ func (c *Config) MarshalTOML() []byte {
 	writeKV("assets_root", filepath.ToSlash(c.Paths.AssetsRoot))
 	writeKV("manifest_path", filepath.ToSlash(c.Paths.ManifestPath))
 
+	buf.WriteString("\n[css]\n")
+	writeBool("enabled", c.CSS.Enabled)
+	writeKV("command", c.CSS.Command)
+	writeKV("input", filepath.ToSlash(c.CSS.Input))
+	writeKV("output", filepath.ToSlash(c.CSS.Output))
+	writeList("content", c.CSS.Content)
+	writeBool("minify", c.CSS.Minify)
+
 	buf.WriteString("\n[js]\n")
+	writeBool("enabled", c.JS.Enabled)
 	writeKV("out_dir", filepath.ToSlash(c.JS.OutDir))
 	writeInt("hash_length", c.JS.HashLength)
 	writeList("src_dirs", c.JS.SrcDirs)
@@ -302,9 +401,17 @@ func (c *Config) MarshalTOML() []byte {
 	writeBool("cleanup_stale", c.Manifest.CleanupStale)
 
 	buf.WriteString("\n[images]\n")
+	writeBool("enabled", c.Images.Enabled)
 	writeKV("config_path", filepath.ToSlash(c.Images.ConfigPath))
 
+	buf.WriteString("\n[favicon]\n")
+	writeBool("enabled", c.Favicon.Enabled)
+	writeKV("source_dir", filepath.ToSlash(c.Favicon.SourceDir))
+	writeKV("out_dir", filepath.ToSlash(c.Favicon.OutDir))
+	writeBool("clean", c.Favicon.Clean)
+
 	buf.WriteString("\n[templui_map]\n")
+	writeBool("enabled", c.TempluiMap.Enabled)
 	writeKV("mode", c.TempluiMap.Mode)
 	writeKV("out", filepath.ToSlash(c.TempluiMap.Out))
 	writeKV("component_dir", filepath.ToSlash(c.TempluiMap.ComponentDir))

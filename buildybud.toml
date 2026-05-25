@@ -1,13 +1,22 @@
 schema_version = 1
-module_path = "jasonchiu-com4"
+module_path = "github.com/jasonwillschiu/buildybud"
 strict = true
 
 [paths]
 repo_root = "."
-assets_root = "assets/embed/assets"
-manifest_path = "assets/embed/assets/manifest.json"
+assets_root = "."
+manifest_path = "manifest.json"
+
+[css]
+enabled = false
+command = "tailwindcss"
+input = "assets/src/css/input.css"
+output = "assets/embed/assets/css/app.css"
+content = ["feature/**/*.templ", "feature/**/*.go", "ui/**/*.templ", "assets/src/templui/**/*.templ"]
+minify = true
 
 [js]
+enabled = false
 out_dir = "assets/embed/assets/js"
 hash_length = 8
 src_dirs = ["assets/src/js"]
@@ -28,27 +37,23 @@ hash_length = 8
 cleanup_stale = true
 
 [images]
+enabled = false
 config_path = "tools/imageopt/config.json"
 
+[favicon]
+enabled = false
+source_dir = "assets/src/favicon"
+out_dir = "assets/embed/assets/favicon"
+clean = true
+
 [templui_map]
+enabled = false
 mode = "declarative"
 out = "core/templui/generated_routes.go"
 component_dir = "assets/src/templui/assets/js"
 default_components = ["dialog"]
 longest_prefix_match = true
 fail_on_missing_component = true
-
-[[templui_map.rule]]
-prefix = "/"
-components = ["dialog"]
-
-[[templui_map.rule]]
-prefix = "/blog"
-components = ["dialog", "popover"]
-
-[[templui_map.rule]]
-prefix = "/projects"
-components = ["dialog", "selectbox"]
 
 [templui_map.suggest]
 enabled = true

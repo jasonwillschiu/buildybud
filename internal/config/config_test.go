@@ -40,6 +40,36 @@ func TestLoadMissingConfigSuggestsInit(t *testing.T) {
 	}
 }
 
+func TestLoadResolvesRepoRootRelativeToConfigFile(t *testing.T) {
+	tmp := t.TempDir()
+	appDir := filepath.Join(tmp, "apps", "web")
+	if err := os.MkdirAll(appDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := filepath.Join(appDir, "buildybud.toml")
+	content := `
+schema_version = 1
+strict = true
+
+[paths]
+repo_root = "."
+assets_root = "assets/embed/assets"
+manifest_path = "assets/embed/assets/manifest.json"
+`
+	if err := os.WriteFile(cfgPath, []byte(strings.TrimSpace(content)+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(appDir, "assets", "embed", "assets")
+	if got := cfg.RepoPath(cfg.Paths.AssetsRoot); got != want {
+		t.Fatalf("RepoPath() = %q, want %q", got, want)
+	}
+}
+
 func TestInitGeneratesConfigFromRepoShape(t *testing.T) {
 	tmp := t.TempDir()
 	dirs := []string{
@@ -88,5 +118,32 @@ func TestInitGeneratesConfigFromRepoShape(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Fatalf("generated config missing %q:\n%s", want, text)
 		}
+	}
+}
+
+func TestInitDefaultConfigPathUsesRepoRoot(t *testing.T) {
+	tmp := t.TempDir()
+	repoRoot := filepath.Join(tmp, "repo")
+	if err := os.MkdirAll(filepath.Join(repoRoot, "assets", "src", "js"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(wd) }()
+	if err := os.Chdir(tmp); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Init(repoRoot, DefaultPath, false); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(repoRoot, DefaultPath)); err != nil {
+		t.Fatalf("expected config under repo root: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(tmp, DefaultPath)); !os.IsNotExist(err) {
+		t.Fatalf("expected no config in caller cwd, got err=%v", err)
 	}
 }

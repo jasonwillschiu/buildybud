@@ -75,6 +75,49 @@ func TestRunInitGeneratesConfig(t *testing.T) {
 	}
 }
 
+func TestRunInitDryRunDoesNotWriteFiles(t *testing.T) {
+	tmp := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(tmp, "assets", "src", "js"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"init", "--repo-root", tmp, "--dry-run"}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("exit code = %d, stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "[paths]") {
+		t.Fatalf("dry run did not print config:\n%s", stdout.String())
+	}
+	if _, err := os.Stat(filepath.Join(tmp, "buildybud.toml")); !os.IsNotExist(err) {
+		t.Fatalf("expected no generated config, got err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(tmp, ".env.example")); !os.IsNotExist(err) {
+		t.Fatalf("expected no generated env example, got err=%v", err)
+	}
+}
+
+func TestRunInitSkipsEnvExampleWhenConfigOutsideRepo(t *testing.T) {
+	tmp := t.TempDir()
+	repoRoot := filepath.Join(tmp, "repo")
+	outsideConfig := filepath.Join(tmp, "generated.toml")
+	if err := os.MkdirAll(filepath.Join(repoRoot, "assets", "src", "js"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"init", "--repo-root", repoRoot, "--config", outsideConfig}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("exit code = %d, stderr=%s", code, stderr.String())
+	}
+	if _, err := os.Stat(outsideConfig); err != nil {
+		t.Fatalf("expected generated external config: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(repoRoot, ".env.example")); !os.IsNotExist(err) {
+		t.Fatalf("expected no env example for external config, got err=%v", err)
+	}
+}
+
 func TestRunInitForceAppendsEnvExample(t *testing.T) {
 	tmp := t.TempDir()
 	if err := os.WriteFile(filepath.Join(tmp, "buildybud.toml"), []byte("schema_version = 1\n"), 0o644); err != nil {

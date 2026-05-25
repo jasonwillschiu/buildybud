@@ -11,8 +11,10 @@ import (
 	"github.com/jasonwillschiu/buildybud/internal/cdn"
 	"github.com/jasonwillschiu/buildybud/internal/changelog"
 	"github.com/jasonwillschiu/buildybud/internal/config"
+	"github.com/jasonwillschiu/buildybud/internal/css"
 	"github.com/jasonwillschiu/buildybud/internal/doctor"
 	"github.com/jasonwillschiu/buildybud/internal/envfile"
+	"github.com/jasonwillschiu/buildybud/internal/favicon"
 	"github.com/jasonwillschiu/buildybud/internal/images"
 	"github.com/jasonwillschiu/buildybud/internal/js"
 	"github.com/jasonwillschiu/buildybud/internal/manifest"
@@ -70,10 +72,16 @@ func run(args []string, stdout, stderr io.Writer) error {
 			return runRepoVersion(args[1:], stdout, stderr)
 		case "manifest":
 			return runManifest(args[1:], stderr)
+		case "css":
+			return runCSS(args[1:], stderr)
 		case "js":
 			return runJS(args[1:], stderr)
 		case "images":
 			return runImages(args[1:], stderr)
+		case "favicon":
+			return runFavicon(args[1:], stderr)
+		case "assets":
+			return runAssets(args[1:], stderr)
 		case "init":
 			return runInit(args[1:], stdout, stderr)
 		case "doctor":
@@ -95,6 +103,7 @@ func runInit(args []string, stdout, stderr io.Writer) error {
 	repoRoot := fs.String("repo-root", ".", "Repo root to scan for build paths")
 	configPath := fs.String("config", config.DefaultPath, "Path for the generated buildybud TOML config")
 	force := fs.Bool("force", false, "Overwrite an existing config file")
+	dryRun := fs.Bool("dry-run", false, "Print the generated config without writing files")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -104,22 +113,34 @@ func runInit(args []string, stdout, stderr io.Writer) error {
 	if fs.NArg() != 0 {
 		return &usageError{msg: "init does not accept positional arguments"}
 	}
+	if *dryRun {
+		cfg, err := config.Discover(*repoRoot)
+		if err != nil {
+			return err
+		}
+		_, _ = stdout.Write(cfg.MarshalTOML())
+		return nil
+	}
+
+	resolvedConfigPath := resolveInitConfigPath(*repoRoot, *configPath)
 	if err := config.Init(*repoRoot, *configPath, *force); err != nil {
 		return err
 	}
-	envExamplePath := filepath.Join(*repoRoot, ".env.example")
-	if err := envfile.AppendExample(envExamplePath); err != nil {
-		return err
-	}
-	absPath, err := filepath.Abs(*configPath)
+	absPath, err := filepath.Abs(resolvedConfigPath)
 	if err != nil {
-		absPath = *configPath
+		absPath = resolvedConfigPath
 	}
 	_, _ = fmt.Fprintf(stdout, "Generated %s\n", absPath)
-	if absEnvPath, err := filepath.Abs(envExamplePath); err == nil {
-		_, _ = fmt.Fprintf(stdout, "Updated %s\n", absEnvPath)
-	} else {
-		_, _ = fmt.Fprintf(stdout, "Updated %s\n", envExamplePath)
+	if configPathIsInsideRepo(*repoRoot, resolvedConfigPath) {
+		envExamplePath := filepath.Join(*repoRoot, ".env.example")
+		if err := envfile.AppendExample(envExamplePath); err != nil {
+			return err
+		}
+		if absEnvPath, err := filepath.Abs(envExamplePath); err == nil {
+			_, _ = fmt.Fprintf(stdout, "Updated %s\n", absEnvPath)
+		} else {
+			_, _ = fmt.Fprintf(stdout, "Updated %s\n", envExamplePath)
+		}
 	}
 	return nil
 }
@@ -199,6 +220,9 @@ func runJS(args []string, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if !cfg.JS.Enabled {
+		return nil
+	}
 
 	return js.Run(js.Options{
 		OutDir:              cfg.RepoPath(cfg.JS.OutDir),
@@ -210,6 +234,50 @@ func runJS(args []string, stderr io.Writer) error {
 		ScanTemplateDirs:    rebase(cfg, cfg.JS.ScanTemplateDirs),
 		TempluiComponentDir: cfg.RepoPath(cfg.JS.TempluiComponentDir),
 		Dependencies:        cfg.JS.Dependencies,
+	})
+}
+
+func runCSS(args []string, stderr io.Writer) error {
+	fs := flag.NewFlagSet("buildybud css", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	configPath := fs.String("config", config.DefaultPath, "Path to buildybud TOML config")
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
+		return &usageError{msg: err.Error()}
+	}
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return err
+	}
+	return runCSSWithConfig(cfg)
+}
+
+func runCSSWithConfig(cfg *config.Config) error {
+	if !cfg.CSS.Enabled {
+		return nil
+	}
+	output := cfg.RepoPath(cfg.CSS.Output)
+	if err := css.Run(css.Options{
+		Command: cfg.CSS.Command,
+		Input:   cfg.RepoPath(cfg.CSS.Input),
+		Output:  output,
+		Content: rebase(cfg, cfg.CSS.Content),
+		Minify:  cfg.CSS.Minify,
+	}); err != nil {
+		return err
+	}
+	logicalPath, err := logicalAssetPath(cfg, output)
+	if err != nil {
+		return err
+	}
+	return manifest.Run(manifest.Options{
+		InputPath:    output,
+		LogicalPath:  logicalPath,
+		ManifestPath: cfg.RepoPath(cfg.Paths.ManifestPath),
+		AssetsRoot:   cfg.RepoPath(cfg.Paths.AssetsRoot),
+		HashLength:   cfg.Manifest.HashLength,
 	})
 }
 
@@ -229,11 +297,102 @@ func runImages(args []string, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if !cfg.Images.Enabled {
+		return nil
+	}
 
 	return images.Run(images.Options{
 		ConfigPath: cfg.RepoPath(cfg.Images.ConfigPath),
 		Verbose:    *verbose,
 	})
+}
+
+func runFavicon(args []string, stderr io.Writer) error {
+	fs := flag.NewFlagSet("buildybud favicon", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	configPath := fs.String("config", config.DefaultPath, "Path to buildybud TOML config")
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
+		return &usageError{msg: err.Error()}
+	}
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return err
+	}
+	return runFaviconWithConfig(cfg)
+}
+
+func runFaviconWithConfig(cfg *config.Config) error {
+	if !cfg.Favicon.Enabled {
+		return nil
+	}
+	return favicon.Run(favicon.Options{
+		SourceDir: cfg.RepoPath(cfg.Favicon.SourceDir),
+		OutDir:    cfg.RepoPath(cfg.Favicon.OutDir),
+		Clean:     cfg.Favicon.Clean,
+	})
+}
+
+func runAssets(args []string, stderr io.Writer) error {
+	fs := flag.NewFlagSet("buildybud assets", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	configPath := fs.String("config", config.DefaultPath, "Path to buildybud TOML config")
+	only := fs.String("only", "", "Comma-separated asset stages to run: css,js,images,favicon,templui-map")
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
+		return &usageError{msg: err.Error()}
+	}
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return err
+	}
+	selected, err := parseAssetStageSet(*only)
+	if err != nil {
+		return err
+	}
+	shouldRun := func(name string) bool {
+		return len(selected) == 0 || selected[name]
+	}
+	if shouldRun("css") {
+		if err := runCSSWithConfig(cfg); err != nil {
+			return err
+		}
+	}
+	if shouldRun("js") && cfg.JS.Enabled {
+		if err := js.Run(js.Options{
+			OutDir:              cfg.RepoPath(cfg.JS.OutDir),
+			AssetsRoot:          cfg.RepoPath(cfg.Paths.AssetsRoot),
+			ManifestPath:        cfg.RepoPath(cfg.Paths.ManifestPath),
+			HashLength:          cfg.JS.HashLength,
+			SrcDirs:             rebase(cfg, cfg.JS.SrcDirs),
+			CopyDirs:            rebase(cfg, cfg.JS.CopyDirs),
+			ScanTemplateDirs:    rebase(cfg, cfg.JS.ScanTemplateDirs),
+			TempluiComponentDir: cfg.RepoPath(cfg.JS.TempluiComponentDir),
+			Dependencies:        cfg.JS.Dependencies,
+		}); err != nil {
+			return err
+		}
+	}
+	if shouldRun("images") && cfg.Images.Enabled {
+		if err := images.Run(images.Options{ConfigPath: cfg.RepoPath(cfg.Images.ConfigPath)}); err != nil {
+			return err
+		}
+	}
+	if shouldRun("favicon") {
+		if err := runFaviconWithConfig(cfg); err != nil {
+			return err
+		}
+	}
+	if shouldRun("templui-map") && cfg.TempluiMap.Enabled {
+		if err := templuimap.Generate(cfg); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func runDoctor(args []string, stderr io.Writer) error {
@@ -274,10 +433,19 @@ func runTempluiMap(args []string, stderr io.Writer) error {
 
 	switch subcommand {
 	case "generate":
+		if !cfg.TempluiMap.Enabled {
+			return nil
+		}
 		return templuimap.Generate(cfg)
 	case "check":
+		if !cfg.TempluiMap.Enabled {
+			return nil
+		}
 		return templuimap.Check(cfg)
 	case "suggest":
+		if !cfg.TempluiMap.Enabled {
+			return nil
+		}
 		return templuimap.Suggest(cfg)
 	default:
 		return &usageError{msg: fmt.Sprintf("unknown templui-map subcommand: %s", subcommand)}
@@ -314,6 +482,76 @@ func rebase(cfg *config.Config, paths []string) []string {
 	return out
 }
 
+func logicalAssetPath(cfg *config.Config, path string) (string, error) {
+	rel, err := filepath.Rel(cfg.RepoPath(cfg.Paths.AssetsRoot), path)
+	if err != nil {
+		return "", fmt.Errorf("resolve logical asset path for %s: %w", path, err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("asset output %s is outside assets root %s", path, cfg.RepoPath(cfg.Paths.AssetsRoot))
+	}
+	return filepath.ToSlash(rel), nil
+}
+
+func parseAssetStageSet(value string) (map[string]bool, error) {
+	selected := map[string]bool{}
+	if strings.TrimSpace(value) == "" {
+		return selected, nil
+	}
+	allowed := map[string]bool{
+		"css":         true,
+		"js":          true,
+		"images":      true,
+		"favicon":     true,
+		"templui-map": true,
+		"templui_map": true,
+		"templuimap":  true,
+	}
+	for _, raw := range strings.Split(value, ",") {
+		name := strings.TrimSpace(raw)
+		if name == "" {
+			continue
+		}
+		if !allowed[name] {
+			return nil, fmt.Errorf("unknown asset stage %q", name)
+		}
+		if name == "templui_map" || name == "templuimap" {
+			name = "templui-map"
+		}
+		selected[name] = true
+	}
+	return selected, nil
+}
+
+func configPathIsInsideRepo(repoRoot, configPath string) bool {
+	absRepo, err := filepath.Abs(repoRoot)
+	if err != nil {
+		return false
+	}
+	absConfig, err := filepath.Abs(configPath)
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(absRepo, absConfig)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
+}
+
+func resolveInitConfigPath(repoRoot, configPath string) string {
+	if configPath == "" {
+		configPath = config.DefaultPath
+	}
+	if filepath.IsAbs(configPath) {
+		return configPath
+	}
+	if repoRoot == "" {
+		repoRoot = "."
+	}
+	return filepath.Join(repoRoot, configPath)
+}
+
 func printRootUsage(w io.Writer) {
 	_, _ = fmt.Fprintf(w, `%s version %s
 
@@ -325,13 +563,16 @@ Quick start:
   2. In your repo root: buildybud init
   3. Check the generated %s and adjust repo-specific paths
   4. Run buildybud doctor
-  5. Run a command such as buildybud js or buildybud manifest --input ... --logical ...
+  5. Run a command such as buildybud assets or buildybud manifest --input ... --logical ...
 
 Commands:
   init               Scan the repo and generate a starter buildybud.toml
+  assets             Build configured web assets (css, js, images, favicon, templui-map)
+  css                Build Tailwind CSS and update manifest.json
   manifest           Hash a built file and update manifest.json
   js                 Build and hash JS assets, copy templui JS
   images             Generate image variants via vips
+  favicon            Copy favicon assets into embedded assets
   cdn                Plan and purge Bunny or Cloudflare CDN URLs
   templui-map        Manage templui route map (generate|check|suggest)
   doctor             Validate config, paths, and tooling
@@ -345,7 +586,8 @@ Global Flags:
 Examples:
   %s init
   %s doctor
+  %s assets --config ./buildybud.toml
   %s js --config ./buildybud.toml
   %s cdn purge --provider bunny /blog /projects/demo
-`, toolName, ToolVersion, toolName, ToolVersion, config.DefaultPath, toolName, toolName, toolName, toolName)
+`, toolName, ToolVersion, toolName, ToolVersion, config.DefaultPath, toolName, toolName, toolName, toolName, toolName)
 }

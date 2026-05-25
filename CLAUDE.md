@@ -15,17 +15,22 @@
 ## Quick Facts
 - Module: `github.com/jasonwillschiu/buildybud`
 - Entry point: `main.go`
-- Config file: `buildybud.toml` (repo root)
-- Install: `go install github.com/jasonwillschiu/buildybud@v0.5.0`
+- Config file: `buildybud.toml` (repo root or Go SSR app root)
+- Install: `go install github.com/jasonwillschiu/buildybud@v0.6.0`
 - Primary target: repos using `go-datastar1` templates and the matching asset layout
+- Taskfile remains the public command layer; buildybud owns reusable Go SSR web asset steps.
 
 ## Hard Invariants
 - `envOrDefault` accepts variadic keys: checked in order, last arg is the fallback value.
 - CDN env vars support two forms: unprefixed (`APP_BASE_URL`) and `BB_`-prefixed (`BB_APP_BASE_URL`). Unprefixed is checked first.
 - `.env` file is auto-loaded before command execution.
 - `buildybud init` also maintains `.env.example`: create it if missing, append missing documented `BB_` env vars, do not duplicate existing keys or legacy unprefixed aliases.
+- `buildybud init --dry-run` writes no files, and `init` only updates `.env.example` when the generated config is inside the target repo.
+- Config paths resolve relative to `buildybud.toml` unless `paths.repo_root` is absolute.
+- Asset capability sections support `enabled = false`; `doctor` must only require enabled tools and paths.
 - `buildybud init` seeds JS dependency defaults for `selectbox`, `datepicker`, and `timepicker` with `input` + `popover`, and `tagsinput` with `popover`.
 - `buildybud.toml` must exist or CLI tells user to run `buildybud init`.
+- `buildybud assets` is a narrow asset macro, not a replacement for Taskfile CI orchestration.
 - `buildybud --version` prints embedded CLI version; `buildybud version` prints changelog version.
 
 ## Project Structure
@@ -34,11 +39,13 @@ main.go                     CLI entry point
 internal/app/               Root command, help, init, doctor, version
 internal/cdn/               CDN plan/purge logic (Bunny + Cloudflare)
 internal/config/            TOML config parsing + validation
+internal/css/               Tailwind CSS build command wrapper
 internal/envfile/           .env loader + .env.example writer
+internal/favicon/           Favicon copy step
 internal/js/                JS bundling
 internal/images/            Image optimization (requires vips)
 internal/manifest/          Asset manifest generation
-internal/templamap/         templui-map generate/suggest/check
+internal/templuimap/        templui-map generate/suggest/check
 ```
 
 ## Key Paths

@@ -1,3 +1,9 @@
+# 0.6.0 - Add: Harden web asset orchestration
+- Add `css`, `favicon`, and `assets` commands so Taskfiles can delegate repeatable Go SSR web asset steps to buildybud.
+- Resolve config-relative paths from the `buildybud.toml` directory, improving monorepo app support.
+- Add capability `enabled` flags and make `doctor` check only enabled tools and paths.
+- Add `init --dry-run` and avoid `.env.example` updates when generating config outside the target repo.
+
 # 0.5.0 - Update: JS dependency defaults
 - Expand the generated JS dependency map so `selectbox`, `datepicker`, and `timepicker` pull in `input` plus `popover`, and `tagsinput` pulls in `popover`.
 - Keep the repo docs and init output aligned with the new default dependency set.
