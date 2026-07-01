@@ -1,3 +1,6 @@
+# 0.7.0 - Add: Cleanup removed embed images that are no longer in src
+- Prune optimized image variants and cache entries when their configured source images have been deleted.
+
 # 0.6.0 - Add: Harden web asset orchestration
 - Add `css`, `favicon`, and `assets` commands so Taskfiles can delegate repeatable Go SSR web asset steps to buildybud.
 - Resolve config-relative paths from the `buildybud.toml` directory, improving monorepo app support.

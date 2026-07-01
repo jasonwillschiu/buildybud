@@ -68,8 +68,14 @@ func Run(opts Options) error {
 
 	cachePath := filepath.Join(cfg.OutputDir, "cache.json")
 	cache := loadImageCache(cachePath)
+	previousManifest := loadImageManifest(manifestPath)
 	if opts.Verbose {
 		fmt.Printf("Loaded cache with %d entries\n", len(cache.Entries))
+	}
+
+	deletedSourceFiles, deletedSourceCacheEntries, err := pruneDeletedSourceOutputs(cfg.SourceDir, cfg.OutputDir, previousManifest, cache, opts.Verbose)
+	if err != nil {
+		return fmt.Errorf("failed to prune deleted source image outputs: %w", err)
 	}
 
 	var processedCount, failedCount, cachedCount int
@@ -98,6 +104,8 @@ func Run(opts Options) error {
 	if err != nil {
 		return fmt.Errorf("failed to prune stale image outputs: %w", err)
 	}
+	removedFiles += deletedSourceFiles
+	removedCacheEntries += deletedSourceCacheEntries
 	if err := saveManifestAtomic(manifest, manifestPath); err != nil {
 		return fmt.Errorf("failed to save manifest: %w", err)
 	}
@@ -261,6 +269,21 @@ func saveManifestAtomic(im *ImageManifest, path string) error {
 	return os.Rename(tmp, path)
 }
 
+func loadImageManifest(path string) *ImageManifest {
+	manifest := NewImageManifest()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return manifest
+	}
+	if err := json.Unmarshal(data, manifest); err != nil {
+		return NewImageManifest()
+	}
+	if manifest.Images == nil {
+		manifest.Images = make(map[string]*ProcessedImage)
+	}
+	return manifest
+}
+
 func loadImageCache(path string) *ImageCache {
 	cache := &ImageCache{Entries: make(map[string]CacheEntry)}
 	data, err := os.ReadFile(path)
@@ -349,13 +372,54 @@ func processOneWithCache(src string, cfg *Config, cache *ImageCache, sourceHash 
 	return processed, false, nil
 }
 
+func pruneDeletedSourceOutputs(sourceDir, outputDir string, previous *ImageManifest, cache *ImageCache, verbose bool) (int, int, error) {
+	if previous == nil || len(previous.Images) == 0 {
+		return 0, 0, nil
+	}
+
+	removedFiles := 0
+	removedCacheEntries := 0
+	for _, processed := range previous.Images {
+		if processed == nil || strings.TrimSpace(processed.OriginalPath) == "" {
+			continue
+		}
+		sourcePath := filepath.Clean(processed.OriginalPath)
+		if !isPathUnder(sourcePath, sourceDir) {
+			continue
+		}
+		if _, err := os.Stat(sourcePath); err == nil {
+			continue
+		} else if !os.IsNotExist(err) {
+			return 0, 0, fmt.Errorf("stat source image %s: %w", filepath.ToSlash(sourcePath), err)
+		}
+
+		for _, outputPath := range processed.VariantPaths() {
+			outputPath = filepath.Clean(outputPath)
+			if !isPathUnder(outputPath, outputDir) {
+				continue
+			}
+			if err := os.Remove(outputPath); err == nil {
+				removedFiles++
+				if verbose {
+					fmt.Printf("Removed deleted-source image output: %s\n", filepath.ToSlash(outputPath))
+				}
+			} else if !os.IsNotExist(err) {
+				return 0, 0, fmt.Errorf("remove deleted-source image output %s: %w", filepath.ToSlash(outputPath), err)
+			}
+			removedCacheEntries += deleteCacheEntry(cache, outputPath, verbose)
+		}
+	}
+	return removedFiles, removedCacheEntries, nil
+}
+
 func pruneStaleOutputs(outputDir string, manifest *ImageManifest, cache *ImageCache, verbose bool) (int, int, error) {
 	keep := make(map[string]struct{})
 	for _, processed := range manifest.Images {
-		for _, sizeMap := range processed.Variants {
-			for _, outputPath := range sizeMap {
-				keep[filepath.ToSlash(outputPath)] = struct{}{}
-			}
+		if processed == nil {
+			continue
+		}
+		for _, outputPath := range processed.VariantPaths() {
+			keep[filepath.ToSlash(outputPath)] = struct{}{}
 		}
 	}
 
@@ -406,4 +470,32 @@ func pruneStaleOutputs(outputDir string, manifest *ImageManifest, cache *ImageCa
 	}
 
 	return removedFiles, removedCacheEntries, nil
+}
+
+func deleteCacheEntry(cache *ImageCache, outputPath string, verbose bool) int {
+	if cache == nil || cache.Entries == nil {
+		return 0
+	}
+	removed := 0
+	for _, key := range []string{filepath.ToSlash(outputPath), outputPath} {
+		if _, ok := cache.Entries[key]; !ok {
+			continue
+		}
+		delete(cache.Entries, key)
+		removed++
+		if verbose {
+			fmt.Printf("Removed stale cache entry: %s\n", filepath.ToSlash(key))
+		}
+	}
+	return removed
+}
+
+func isPathUnder(path, dir string) bool {
+	path = filepath.Clean(path)
+	dir = filepath.Clean(dir)
+	rel, err := filepath.Rel(dir, path)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
 }

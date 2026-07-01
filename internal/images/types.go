@@ -44,6 +44,19 @@ func (im *ImageManifest) AddImage(processed *ProcessedImage) {
 	im.Images[base] = processed
 }
 
+func (p *ProcessedImage) VariantPaths() []string {
+	if p == nil {
+		return nil
+	}
+	var paths []string
+	for _, sizeMap := range p.Variants {
+		for _, outputPath := range sizeMap {
+			paths = append(paths, outputPath)
+		}
+	}
+	return paths
+}
+
 func LoadConfig(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
