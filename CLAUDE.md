@@ -16,7 +16,7 @@
 - Module: `github.com/jasonwillschiu/buildybud`
 - Entry point: `main.go`
 - Config file: `buildybud.toml` (repo root or Go SSR app root)
-- Install: `go install github.com/jasonwillschiu/buildybud@v0.6.0`
+- Install: `go install github.com/jasonwillschiu/buildybud@v0.9.0`
 - Primary target: repos using `go-datastar1` templates and the matching asset layout
 - Taskfile remains the public command layer; buildybud owns reusable Go SSR web asset steps.
 
@@ -45,6 +45,7 @@ internal/favicon/           Favicon copy step
 internal/js/                JS bundling
 internal/images/            Image optimization (requires vips)
 internal/manifest/          Asset manifest generation
+internal/og/                Open Graph PNG rendering (multi-layer composition)
 internal/templuimap/        templui-map generate/suggest/check
 ```
 
@@ -55,6 +56,7 @@ internal/templuimap/        templui-map generate/suggest/check
 | Config parsing | `internal/config/config.go` |
 | CLI entry + init | `internal/app/app.go` |
 | Env loading / example file | `internal/envfile/` |
+| OG card rendering | `internal/og/og.go` + `internal/og/types.go` |
 | Taskfile | `Taskfile.yml` |
 
 ## Reference Docs

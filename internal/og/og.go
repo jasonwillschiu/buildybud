@@ -69,7 +69,13 @@ func Run(ctx context.Context, opts Options) (Stats, error) {
 	if err := validateOptions(opts); err != nil {
 		return Stats{}, err
 	}
-	assets := Assets{BackgroundPath: opts.BackgroundPath, LogoPath: opts.LogoPath, FontPath: opts.FontPath}
+	assets := Assets{
+		BackgroundPath: opts.BackgroundPath,
+		LogoPath:       opts.LogoPath,
+		FontPath:       opts.FontPath,
+		SiteName:       opts.SiteName,
+		SiteURL:        opts.SiteURL,
+	}
 	assetHash, err := hashAssets(assets, opts.SiteName, opts.SiteURL)
 	if err != nil {
 		return Stats{}, err

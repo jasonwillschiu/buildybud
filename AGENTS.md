@@ -10,6 +10,7 @@
 - Config: `internal/config/config.go`
 - CSS: `internal/css/css.go`
 - Favicon: `internal/favicon/favicon.go`
+- OG: `internal/og/og.go` + `internal/og/types.go`
 - Env loader: `internal/envfile/envfile.go`
 
 ## Rules
@@ -28,6 +29,7 @@
 - `--version` = embedded CLI version; `version` subcommand = changelog version
 - `css` command requires `tailwindcss` in PATH
 - `images` command requires `vips` in PATH
+- `og` render uses multi-step composition: cover → wash → brand → card text → footer URL; title is required, text auto-fits via font size reduction (68→52px) + ellipsis truncation
 - Never hardcode CDN credentials
 
 ## Docs

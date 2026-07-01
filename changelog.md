@@ -1,3 +1,9 @@
+# 0.9.0 - Update: Rich OG card composition with text fitting
+- Refactor OG card rendering to multi-layer pipeline: cover, wash, brand, card text, footer URL
+- Add auto-fitting title/subtitle with font size reduction (68→52px) and ellipsis truncation
+- Add brand rendering (site name + logo) and footer site URL
+- Add validation that OG card title is required
+
 # 0.8.0 - Add: Declarative Open Graph image generation
 - Add `buildybud og` for declarative route and blog Open Graph PNG generation.
 - Add `[og]` config for brand assets, route card TOML, blog hero front matter, generated-card manifests, and custom-hero watermarking.

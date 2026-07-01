@@ -6,7 +6,7 @@ It is specifically built for repos using `go-datastar1` templates and the surrou
 ## Install
 
 ```bash
-	go install github.com/jasonwillschiu/buildybud@v0.8.0
+	go install github.com/jasonwillschiu/buildybud@v0.9.0
 ```
 
 ## Set Up In A Repo
@@ -94,6 +94,13 @@ subtitle = "Compare public data clearly."
 ```
 
 Blog posts use front matter fields `hero_image` and `hero_image_source`. Use `hero_image_source: generated` to render a card from `title` plus `excerpt` or `description`. Use `hero_image_source: custom` for local custom art under `raw_blog_image_dir`; buildybud watermarks the public `hero_image` PNG with the configured logo and site URL. Absolute custom URLs are skipped.
+
+The OG card rendering pipeline composes these layers:
+- **Cover** — background image scaled to fill the 1200x630 canvas
+- **Wash** — gradient overlay (left-to-right white fade, bottom-to-top blue tint) for readability
+- **Brand** — logo (62px square) + site name (uppercase, 26px) pinned to the top-left
+- **Card text** — title (required) and subtitle auto-fitted with font size reduction (68px→52px, 29px→24px) and line truncation with ellipsis to fit within the text column
+- **Footer URL** — site URL (20px) rendered at the bottom-left
 
 ## CDN
 
