@@ -1,3 +1,6 @@
+# 0.7.1 - Update: Version update in README
+- Update version to install in README.md
+
 # 0.7.0 - Add: Cleanup removed embed images that are no longer in src
 - Prune optimized image variants and cache entries when their configured source images have been deleted.
 

@@ -6,7 +6,7 @@ It is specifically built for repos using `go-datastar1` templates and the surrou
 ## Install
 
 ```bash
-	go install github.com/jasonwillschiu/buildybud@v0.6.0
+	go install github.com/jasonwillschiu/buildybud@v0.7.1
 ```
 
 ## Set Up In A Repo
