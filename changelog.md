@@ -1,3 +1,8 @@
+# 0.8.0 - Add: Declarative Open Graph image generation
+- Add `buildybud og` for declarative route and blog Open Graph PNG generation.
+- Add `[og]` config for brand assets, route card TOML, blog hero front matter, generated-card manifests, and custom-hero watermarking.
+- Run enabled OG generation before image optimization in `buildybud images` and `buildybud assets`.
+
 # 0.7.1 - Update: Version update in README
 - Update version to install in README.md
 

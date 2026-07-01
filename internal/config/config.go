@@ -25,6 +25,7 @@ type Config struct {
 	CSS        CSSConfig        `toml:"css"`
 	JS         JSConfig         `toml:"js"`
 	Manifest   ManifestConfig   `toml:"manifest"`
+	OG         OGConfig         `toml:"og"`
 	Images     ImagesConfig     `toml:"images"`
 	Favicon    FaviconConfig    `toml:"favicon"`
 	TempluiMap TempluiMapConfig `toml:"templui_map"`
@@ -61,6 +62,22 @@ type DepConfig map[string][]string
 type ManifestConfig struct {
 	HashLength   int  `toml:"hash_length"`
 	CleanupStale bool `toml:"cleanup_stale"`
+}
+
+type OGConfig struct {
+	Enabled         bool   `toml:"enabled"`
+	SiteName        string `toml:"site_name"`
+	SiteURL         string `toml:"site_url"`
+	Background      string `toml:"background"`
+	Logo            string `toml:"logo"`
+	Font            string `toml:"font"`
+	RoutesFile      string `toml:"routes_file"`
+	RouteOutputDir  string `toml:"route_output_dir"`
+	RouteManifest   string `toml:"route_manifest"`
+	BlogDir         string `toml:"blog_dir"`
+	BlogImageDir    string `toml:"blog_image_dir"`
+	RawBlogImageDir string `toml:"raw_blog_image_dir"`
+	BlogManifest    string `toml:"blog_manifest"`
 }
 
 type ImagesConfig struct {
@@ -140,6 +157,21 @@ func Default() *Config {
 		Manifest: ManifestConfig{
 			HashLength:   8,
 			CleanupStale: true,
+		},
+		OG: OGConfig{
+			Enabled:         false,
+			SiteName:        "",
+			SiteURL:         "",
+			Background:      "assets/src/images/og/background.png",
+			Logo:            "assets/src/favicon/web-app-manifest-192x192.png",
+			Font:            "assets/src/fonts/og/OpenSans-Bold.ttf",
+			RoutesFile:      "content/seo/routes.toml",
+			RouteOutputDir:  "assets/src/images/og",
+			RouteManifest:   "assets/src/images/og/generated-manifest.json",
+			BlogDir:         "content/blog",
+			BlogImageDir:    "assets/src/images/blog",
+			RawBlogImageDir: "assets/src/raw-images/blog",
+			BlogManifest:    "assets/src/images/blog/generated-manifest.json",
 		},
 		Images: ImagesConfig{Enabled: true, ConfigPath: "tools/imageopt/config.json"},
 		Favicon: FaviconConfig{
@@ -245,6 +277,27 @@ func (c *Config) Validate() error {
 	if c.Images.Enabled && c.Images.ConfigPath == "" {
 		return errors.New("images.config_path is required when images.enabled is true")
 	}
+	if c.OG.Enabled {
+		if c.OG.SiteURL == "" {
+			return errors.New("og.site_url is required when og.enabled is true")
+		}
+		for name, value := range map[string]string{
+			"og.background":         c.OG.Background,
+			"og.logo":               c.OG.Logo,
+			"og.font":               c.OG.Font,
+			"og.routes_file":        c.OG.RoutesFile,
+			"og.route_output_dir":   c.OG.RouteOutputDir,
+			"og.route_manifest":     c.OG.RouteManifest,
+			"og.blog_dir":           c.OG.BlogDir,
+			"og.blog_image_dir":     c.OG.BlogImageDir,
+			"og.raw_blog_image_dir": c.OG.RawBlogImageDir,
+			"og.blog_manifest":      c.OG.BlogManifest,
+		} {
+			if value == "" {
+				return fmt.Errorf("%s is required when og.enabled is true", name)
+			}
+		}
+	}
 	if c.TempluiMap.Enabled && c.TempluiMap.Out == "" {
 		return errors.New("templui_map.out is required")
 	}
@@ -331,7 +384,9 @@ func Discover(repoRoot string) (*Config, error) {
 	cfg.JS.CopyDirs = existingDirs(root, "assets/src/templui/assets/js")
 	cfg.JS.ScanTemplateDirs = existingDirs(root, "ui", "feature")
 	cfg.JS.TempluiComponentDir = firstOrDefault(cfg.JS.CopyDirs, cfg.JS.TempluiComponentDir)
-	cfg.Images.ConfigPath = detectExisting(root, "tools/imageopt/config.json", "imageopt/config.json")
+	cfg.Images.ConfigPath = detectExisting(root, "assets/src/images/imageopt.config.json", "tools/imageopt/config.json", "imageopt/config.json")
+	cfg.OG.RoutesFile = detectExisting(root, "content/seo/routes.toml")
+	cfg.OG.BlogDir = detectExisting(root, "content/blog")
 	cfg.Favicon.SourceDir = detectExisting(root, "assets/src/favicon")
 	cfg.Favicon.OutDir = filepath.ToSlash(filepath.Join(cfg.Paths.AssetsRoot, "favicon"))
 	cfg.TempluiMap.ComponentDir = cfg.JS.TempluiComponentDir
@@ -399,6 +454,21 @@ func (c *Config) MarshalTOML() []byte {
 	buf.WriteString("\n[manifest]\n")
 	writeInt("hash_length", c.Manifest.HashLength)
 	writeBool("cleanup_stale", c.Manifest.CleanupStale)
+
+	buf.WriteString("\n[og]\n")
+	writeBool("enabled", c.OG.Enabled)
+	writeKV("site_name", c.OG.SiteName)
+	writeKV("site_url", c.OG.SiteURL)
+	writeKV("background", filepath.ToSlash(c.OG.Background))
+	writeKV("logo", filepath.ToSlash(c.OG.Logo))
+	writeKV("font", filepath.ToSlash(c.OG.Font))
+	writeKV("routes_file", filepath.ToSlash(c.OG.RoutesFile))
+	writeKV("route_output_dir", filepath.ToSlash(c.OG.RouteOutputDir))
+	writeKV("route_manifest", filepath.ToSlash(c.OG.RouteManifest))
+	writeKV("blog_dir", filepath.ToSlash(c.OG.BlogDir))
+	writeKV("blog_image_dir", filepath.ToSlash(c.OG.BlogImageDir))
+	writeKV("raw_blog_image_dir", filepath.ToSlash(c.OG.RawBlogImageDir))
+	writeKV("blog_manifest", filepath.ToSlash(c.OG.BlogManifest))
 
 	buf.WriteString("\n[images]\n")
 	writeBool("enabled", c.Images.Enabled)

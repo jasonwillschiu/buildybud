@@ -36,6 +36,21 @@ tagsinput = ["popover"]
 hash_length = 8
 cleanup_stale = true
 
+[og]
+enabled = false
+site_name = ""
+site_url = ""
+background = "assets/src/images/og/background.png"
+logo = "assets/src/favicon/web-app-manifest-192x192.png"
+font = "assets/src/fonts/og/OpenSans-Bold.ttf"
+routes_file = "content/seo/routes.toml"
+route_output_dir = "assets/src/images/og"
+route_manifest = "assets/src/images/og/generated-manifest.json"
+blog_dir = "content/blog"
+blog_image_dir = "assets/src/images/blog"
+raw_blog_image_dir = "assets/src/raw-images/blog"
+blog_manifest = "assets/src/images/blog/generated-manifest.json"
+
 [images]
 enabled = false
 config_path = "tools/imageopt/config.json"

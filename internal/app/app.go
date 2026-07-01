@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"github.com/jasonwillschiu/buildybud/internal/images"
 	"github.com/jasonwillschiu/buildybud/internal/js"
 	"github.com/jasonwillschiu/buildybud/internal/manifest"
+	"github.com/jasonwillschiu/buildybud/internal/og"
 	"github.com/jasonwillschiu/buildybud/internal/templuimap"
 )
 
@@ -78,6 +80,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 			return runJS(args[1:], stderr)
 		case "images":
 			return runImages(args[1:], stderr)
+		case "og":
+			return runOG(args[1:], stderr)
 		case "favicon":
 			return runFavicon(args[1:], stderr)
 		case "assets":
@@ -300,11 +304,62 @@ func runImages(args []string, stderr io.Writer) error {
 	if !cfg.Images.Enabled {
 		return nil
 	}
+	return runImagesWithConfig(cfg, *verbose)
+}
+
+func runImagesWithConfig(cfg *config.Config, verbose bool) error {
+	if cfg.OG.Enabled {
+		if err := runOGWithConfig(cfg); err != nil {
+			return err
+		}
+	}
+	if !cfg.Images.Enabled {
+		return nil
+	}
 
 	return images.Run(images.Options{
 		ConfigPath: cfg.RepoPath(cfg.Images.ConfigPath),
-		Verbose:    *verbose,
+		Verbose:    verbose,
 	})
+}
+
+func runOG(args []string, stderr io.Writer) error {
+	fs := flag.NewFlagSet("buildybud og", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	configPath := fs.String("config", config.DefaultPath, "Path to buildybud TOML config")
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
+		return &usageError{msg: err.Error()}
+	}
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return err
+	}
+	return runOGWithConfig(cfg)
+}
+
+func runOGWithConfig(cfg *config.Config) error {
+	if !cfg.OG.Enabled {
+		return nil
+	}
+	_, err := og.Run(context.Background(), og.Options{
+		RepoRoot:        cfg.RepoPath(cfg.Paths.RepoRoot),
+		SiteName:        cfg.OG.SiteName,
+		SiteURL:         cfg.OG.SiteURL,
+		BackgroundPath:  cfg.RepoPath(cfg.OG.Background),
+		LogoPath:        cfg.RepoPath(cfg.OG.Logo),
+		FontPath:        cfg.RepoPath(cfg.OG.Font),
+		RoutesFile:      cfg.RepoPath(cfg.OG.RoutesFile),
+		RouteOutputDir:  cfg.RepoPath(cfg.OG.RouteOutputDir),
+		RouteManifest:   cfg.RepoPath(cfg.OG.RouteManifest),
+		BlogDir:         cfg.RepoPath(cfg.OG.BlogDir),
+		BlogImageDir:    cfg.RepoPath(cfg.OG.BlogImageDir),
+		RawBlogImageDir: cfg.RepoPath(cfg.OG.RawBlogImageDir),
+		BlogManifest:    cfg.RepoPath(cfg.OG.BlogManifest),
+	})
+	return err
 }
 
 func runFavicon(args []string, stderr io.Writer) error {
@@ -339,7 +394,7 @@ func runAssets(args []string, stderr io.Writer) error {
 	fs := flag.NewFlagSet("buildybud assets", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", config.DefaultPath, "Path to buildybud TOML config")
-	only := fs.String("only", "", "Comma-separated asset stages to run: css,js,images,favicon,templui-map")
+	only := fs.String("only", "", "Comma-separated asset stages to run: css,js,og,images,favicon,templui-map")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -377,8 +432,13 @@ func runAssets(args []string, stderr io.Writer) error {
 			return err
 		}
 	}
+	if shouldRun("og") && (!shouldRun("images") || !cfg.Images.Enabled) {
+		if err := runOGWithConfig(cfg); err != nil {
+			return err
+		}
+	}
 	if shouldRun("images") && cfg.Images.Enabled {
-		if err := images.Run(images.Options{ConfigPath: cfg.RepoPath(cfg.Images.ConfigPath)}); err != nil {
+		if err := runImagesWithConfig(cfg, false); err != nil {
 			return err
 		}
 	}
@@ -501,6 +561,7 @@ func parseAssetStageSet(value string) (map[string]bool, error) {
 	allowed := map[string]bool{
 		"css":         true,
 		"js":          true,
+		"og":          true,
 		"images":      true,
 		"favicon":     true,
 		"templui-map": true,
@@ -567,10 +628,11 @@ Quick start:
 
 Commands:
   init               Scan the repo and generate a starter buildybud.toml
-  assets             Build configured web assets (css, js, images, favicon, templui-map)
+  assets             Build configured web assets (css, js, og/images, favicon, templui-map)
   css                Build Tailwind CSS and update manifest.json
   manifest           Hash a built file and update manifest.json
   js                 Build and hash JS assets, copy templui JS
+  og                 Generate Open Graph PNG sources
   images             Generate image variants via vips
   favicon            Copy favicon assets into embedded assets
   cdn                Plan and purge Bunny or Cloudflare CDN URLs
@@ -588,6 +650,7 @@ Examples:
   %s doctor
   %s assets --config ./buildybud.toml
   %s js --config ./buildybud.toml
+  %s og --config ./buildybud.toml
   %s cdn purge --provider bunny /blog /projects/demo
-`, toolName, ToolVersion, toolName, ToolVersion, config.DefaultPath, toolName, toolName, toolName, toolName, toolName)
+`, toolName, ToolVersion, toolName, ToolVersion, config.DefaultPath, toolName, toolName, toolName, toolName, toolName, toolName)
 }

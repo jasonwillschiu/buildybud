@@ -72,6 +72,27 @@ func checkPaths(cfg *config.Config) error {
 			return fmt.Errorf("missing images config: %s", cfg.Images.ConfigPath)
 		}
 	}
+	if cfg.OG.Enabled {
+		requiredFiles := map[string]string{
+			"og background":  cfg.OG.Background,
+			"og logo":        cfg.OG.Logo,
+			"og font":        cfg.OG.Font,
+			"og routes file": cfg.OG.RoutesFile,
+		}
+		for label, path := range requiredFiles {
+			if _, err := os.Stat(cfg.RepoPath(path)); err != nil {
+				return fmt.Errorf("missing %s: %s", label, path)
+			}
+		}
+		for label, path := range map[string]string{
+			"og blog dir":       cfg.OG.BlogDir,
+			"og blog image dir": cfg.OG.BlogImageDir,
+		} {
+			if info, err := os.Stat(cfg.RepoPath(path)); err != nil || !info.IsDir() {
+				return fmt.Errorf("missing %s: %s", label, path)
+			}
+		}
+	}
 	return nil
 }
 
