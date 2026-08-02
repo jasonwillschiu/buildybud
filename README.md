@@ -6,7 +6,7 @@ It is specifically built for repos using `go-datastar1` templates and the surrou
 ## Install
 
 ```bash
-	go install github.com/jasonwillschiu/buildybud@v0.9.0
+	go install github.com/jasonwillschiu/buildybud@v0.10.0
 ```
 
 ## Set Up In A Repo
@@ -31,6 +31,7 @@ Use `buildybud init --force` to overwrite an existing config, or `buildybud init
 - `buildybud css`
 - `buildybud manifest`
 - `buildybud js`
+- `buildybud js audit`
 - `buildybud og`
 - `buildybud images`
 - `buildybud favicon`
@@ -61,6 +62,41 @@ Paths in the config are resolved relative to the directory containing `buildybud
 The asset capability sections support `enabled = false` for repos that do not use a step. `doctor` only checks tools and paths for enabled capabilities.
 
 `buildybud css` runs the configured Tailwind command, writes the configured CSS output, hashes it, and updates the asset manifest. `buildybud og` renders configured route and blog Open Graph PNG sources. `buildybud images` runs enabled OG generation first, then creates optimized image variants. `buildybud favicon` copies favicon files into the embedded assets directory. `buildybud assets` runs enabled asset steps in order: CSS, JS, OG/images, favicon, and templui map generation. Use `buildybud assets --only css,js` to run a subset.
+
+## JavaScript processing and size audits
+
+Buildybud processes each `.js` source independently, fingerprints it, and updates the asset manifest. It does not concatenate files or force a module bundler. Set `minify = false` to preserve each source file byte-for-byte before hashing.
+
+Repos without JavaScript can set `enabled = false`. `buildybud init` does this automatically when it finds neither `assets/src/js` nor a configured JavaScript copy directory. The `js` and `assets` commands then skip JavaScript output entirely.
+
+`buildybud js` runs the configured build and then the audit when both are enabled. `buildybud js audit` runs only the audit, which also supports audit-only projects with `js.enabled = false`. With no named audit groups, the audit reports every `js/` entry in the asset manifest. Named groups can enforce separate gzip budgets for globally loaded code and larger route-only code. `files` includes vendor files that do not live in the manifest. A zero budget reports size without failing.
+
+```toml
+[js]
+enabled = true
+minify = true
+out_dir = "assets/embed/assets/js"
+hash_length = 8
+src_dirs = ["assets/src/js"]
+
+[js.audit]
+enabled = true
+inline_dirs = ["ui", "feature"]
+max_inline_raw_bytes = 8192
+
+[[js.audit.group]]
+name = "global"
+assets = ["js/app.js", "js/router.js"]
+gzip_budget_bytes = 24576
+
+[[js.audit.group]]
+name = "maps"
+assets = ["js/map.js"]
+files = ["assets/embed/assets/js/map-vendor.js"]
+gzip_budget_bytes = 0
+```
+
+The inline scan covers `.templ`, `.html`, `.gohtml`, and `.tmpl` files under `inline_dirs`. It ignores external `<script src>` tags and JSON data scripts such as JSON-LD.
 
 ## Open Graph Images
 

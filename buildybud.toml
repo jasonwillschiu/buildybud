@@ -17,12 +17,18 @@ minify = true
 
 [js]
 enabled = false
+minify = true
 out_dir = "assets/embed/assets/js"
 hash_length = 8
 src_dirs = ["assets/src/js"]
 copy_dirs = ["assets/src/templui/assets/js"]
 scan_template_dirs = ["ui", "feature"]
 templui_component_dir = "assets/src/templui/assets/js"
+
+[js.audit]
+enabled = false
+inline_dirs = []
+max_inline_raw_bytes = 0
 
 [js.dependencies]
 sheet = ["dialog"]

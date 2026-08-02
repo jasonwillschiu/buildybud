@@ -22,6 +22,7 @@ type Options struct {
 	AssetsRoot          string
 	ManifestPath        string
 	HashLength          int
+	Minify              bool
 	SrcDirs             []string
 	CopyDirs            []string
 	ScanTemplateDirs    []string
@@ -56,8 +57,11 @@ func Run(opts Options) error {
 	}
 
 	processed := make(map[string]string, len(assets))
-	m := minify.New()
-	m.AddFunc("text/javascript", js.Minify)
+	var minifier *minify.M
+	if opts.Minify {
+		minifier = minify.New()
+		minifier.AddFunc("text/javascript", js.Minify)
+	}
 
 	if len(assets) > 0 {
 		keys := make([]string, 0, len(assets))
@@ -73,13 +77,16 @@ func Run(opts Options) error {
 				return fmt.Errorf("read %s: %w", item.src, err)
 			}
 
-			var buf bytes.Buffer
-			if err := m.Minify("text/javascript", &buf, bytes.NewReader(content)); err != nil {
-				return fmt.Errorf("minify %s: %w", item.src, err)
+			output := content
+			if minifier != nil {
+				var buf bytes.Buffer
+				if err := minifier.Minify("text/javascript", &buf, bytes.NewReader(content)); err != nil {
+					return fmt.Errorf("minify %s: %w", item.src, err)
+				}
+				output = buf.Bytes()
 			}
-			minified := buf.Bytes()
 
-			hashedRel, err := writeHashed(opts.OutDir, opts.AssetsRoot, item.rel, minified, opts.HashLength)
+			hashedRel, err := writeHashed(opts.OutDir, opts.AssetsRoot, item.rel, output, opts.HashLength)
 			if err != nil {
 				return fmt.Errorf("hash %s: %w", item.src, err)
 			}

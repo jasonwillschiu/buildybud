@@ -17,7 +17,7 @@
 - This CLI is built for repos using `go-datastar1` templates and matching asset layout.
 - Taskfile stays the main command layer; buildybud owns repeatable Go SSR web asset steps.
 - Config paths resolve relative to `buildybud.toml` unless `paths.repo_root` is absolute.
-- Asset capability sections support `enabled = false`; `doctor` must only require enabled tools/paths.
+- Asset capability sections support `enabled = false`; `doctor` must only require enabled tools/paths. JS discovery disables build/audit when no source or copy directory exists; `js.minify` and `js.audit.enabled` remain independent controls.
 - `envOrDefault(keys..., fallback)` - variadic, checked in order, last arg is fallback
 - CDN env vars have two forms: `APP_BASE_URL` and `BB_APP_BASE_URL` (unprefixed checked first)
 - `.env` auto-loaded before command execution

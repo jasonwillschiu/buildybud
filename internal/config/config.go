@@ -47,17 +47,33 @@ type CSSConfig struct {
 }
 
 type JSConfig struct {
-	Enabled             bool      `toml:"enabled"`
-	OutDir              string    `toml:"out_dir"`
-	HashLength          int       `toml:"hash_length"`
-	SrcDirs             []string  `toml:"src_dirs"`
-	CopyDirs            []string  `toml:"copy_dirs"`
-	ScanTemplateDirs    []string  `toml:"scan_template_dirs"`
-	TempluiComponentDir string    `toml:"templui_component_dir"`
-	Dependencies        DepConfig `toml:"dependencies"`
+	Enabled             bool          `toml:"enabled"`
+	Minify              bool          `toml:"minify"`
+	OutDir              string        `toml:"out_dir"`
+	HashLength          int           `toml:"hash_length"`
+	SrcDirs             []string      `toml:"src_dirs"`
+	CopyDirs            []string      `toml:"copy_dirs"`
+	ScanTemplateDirs    []string      `toml:"scan_template_dirs"`
+	TempluiComponentDir string        `toml:"templui_component_dir"`
+	Dependencies        DepConfig     `toml:"dependencies"`
+	Audit               JSAuditConfig `toml:"audit"`
 }
 
 type DepConfig map[string][]string
+
+type JSAuditConfig struct {
+	Enabled           bool                 `toml:"enabled"`
+	InlineDirs        []string             `toml:"inline_dirs"`
+	MaxInlineRawBytes int                  `toml:"max_inline_raw_bytes"`
+	Groups            []JSAuditGroupConfig `toml:"group"`
+}
+
+type JSAuditGroupConfig struct {
+	Name            string   `toml:"name"`
+	Assets          []string `toml:"assets"`
+	Files           []string `toml:"files"`
+	GzipBudgetBytes int      `toml:"gzip_budget_bytes"`
+}
 
 type ManifestConfig struct {
 	HashLength   int  `toml:"hash_length"`
@@ -139,6 +155,7 @@ func Default() *Config {
 		},
 		JS: JSConfig{
 			Enabled:             true,
+			Minify:              true,
 			OutDir:              "assets/embed/assets/js",
 			HashLength:          8,
 			SrcDirs:             []string{"assets/src/js"},
@@ -152,6 +169,10 @@ func Default() *Config {
 				"datepicker": {"input", "popover"},
 				"timepicker": {"input", "popover"},
 				"tagsinput":  {"popover"},
+			},
+			Audit: JSAuditConfig{
+				Enabled:    true,
+				InlineDirs: []string{"ui", "feature"},
 			},
 		},
 		Manifest: ManifestConfig{
@@ -245,6 +266,29 @@ func (c *Config) Validate() error {
 	}
 	if c.JS.HashLength < 1 || c.JS.HashLength > 64 {
 		return fmt.Errorf("js.hash_length must be 1..64")
+	}
+	if c.JS.Enabled && c.JS.OutDir == "" {
+		return errors.New("js.out_dir is required when js.enabled is true")
+	}
+	if c.JS.Audit.MaxInlineRawBytes < 0 {
+		return errors.New("js.audit.max_inline_raw_bytes must be zero or greater")
+	}
+	auditGroups := map[string]bool{}
+	for _, group := range c.JS.Audit.Groups {
+		name := strings.TrimSpace(group.Name)
+		if name == "" {
+			return errors.New("js.audit.group name is required")
+		}
+		if auditGroups[name] {
+			return fmt.Errorf("duplicate js.audit.group name: %s", name)
+		}
+		auditGroups[name] = true
+		if len(group.Assets) == 0 && len(group.Files) == 0 {
+			return fmt.Errorf("js.audit.group %q requires assets or files", name)
+		}
+		if group.GzipBudgetBytes < 0 {
+			return fmt.Errorf("js.audit.group %q gzip_budget_bytes must be zero or greater", name)
+		}
 	}
 	if c.Paths.RepoRoot == "" {
 		return errors.New("paths.repo_root is required")
@@ -383,6 +427,9 @@ func Discover(repoRoot string) (*Config, error) {
 	cfg.JS.SrcDirs = existingDirs(root, "assets/src/js")
 	cfg.JS.CopyDirs = existingDirs(root, "assets/src/templui/assets/js")
 	cfg.JS.ScanTemplateDirs = existingDirs(root, "ui", "feature")
+	cfg.JS.Enabled = len(cfg.JS.SrcDirs) > 0 || len(cfg.JS.CopyDirs) > 0
+	cfg.JS.Audit.Enabled = cfg.JS.Enabled
+	cfg.JS.Audit.InlineDirs = append([]string(nil), cfg.JS.ScanTemplateDirs...)
 	cfg.JS.TempluiComponentDir = firstOrDefault(cfg.JS.CopyDirs, cfg.JS.TempluiComponentDir)
 	cfg.Images.ConfigPath = detectExisting(root, "assets/src/images/imageopt.config.json", "tools/imageopt/config.json", "imageopt/config.json")
 	cfg.OG.RoutesFile = detectExisting(root, "content/seo/routes.toml")
@@ -434,12 +481,25 @@ func (c *Config) MarshalTOML() []byte {
 
 	buf.WriteString("\n[js]\n")
 	writeBool("enabled", c.JS.Enabled)
+	writeBool("minify", c.JS.Minify)
 	writeKV("out_dir", filepath.ToSlash(c.JS.OutDir))
 	writeInt("hash_length", c.JS.HashLength)
 	writeList("src_dirs", c.JS.SrcDirs)
 	writeList("copy_dirs", c.JS.CopyDirs)
 	writeList("scan_template_dirs", c.JS.ScanTemplateDirs)
 	writeKV("templui_component_dir", filepath.ToSlash(c.JS.TempluiComponentDir))
+
+	buf.WriteString("\n[js.audit]\n")
+	writeBool("enabled", c.JS.Audit.Enabled)
+	writeList("inline_dirs", c.JS.Audit.InlineDirs)
+	writeInt("max_inline_raw_bytes", c.JS.Audit.MaxInlineRawBytes)
+	for _, group := range c.JS.Audit.Groups {
+		buf.WriteString("\n[[js.audit.group]]\n")
+		writeKV("name", group.Name)
+		writeList("assets", group.Assets)
+		writeList("files", group.Files)
+		writeInt("gzip_budget_bytes", group.GzipBudgetBytes)
+	}
 
 	buf.WriteString("\n[js.dependencies]\n")
 	depNames := make([]string, 0, len(c.JS.Dependencies))

@@ -111,13 +111,68 @@ func TestInitGeneratesConfigFromRepoShape(t *testing.T) {
 	for _, want := range []string{
 		`module_path = "example"`,
 		`assets_root = "assets/embed/assets"`,
+		`minify = true`,
 		`scan_template_dirs = ["ui", "feature"]`,
+		`inline_dirs = ["ui", "feature"]`,
 		`prefix = "/blog"`,
 		`prefix = "/projects"`,
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("generated config missing %q:\n%s", want, text)
 		}
+	}
+}
+
+func TestDiscoverDisablesJavaScriptWhenRepoHasNoInputs(t *testing.T) {
+	cfg, err := Discover(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.JS.Enabled || cfg.JS.Audit.Enabled {
+		t.Fatalf("JS config = %#v, want build and audit disabled", cfg.JS)
+	}
+}
+
+func TestLoadSupportsVerbatimJavaScriptAndAuditGroups(t *testing.T) {
+	tmp := t.TempDir()
+	cfgPath := filepath.Join(tmp, "buildybud.toml")
+	content := `
+schema_version = 1
+strict = true
+
+[paths]
+repo_root = "."
+assets_root = "assets"
+manifest_path = "assets/manifest.json"
+
+[js]
+enabled = true
+minify = false
+out_dir = "assets/js"
+hash_length = 8
+
+[js.audit]
+enabled = true
+inline_dirs = ["ui"]
+max_inline_raw_bytes = 2048
+
+[[js.audit.group]]
+name = "global"
+assets = ["js/app.js"]
+gzip_budget_bytes = 24576
+`
+	if err := os.WriteFile(cfgPath, []byte(strings.TrimSpace(content)+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.JS.Minify {
+		t.Fatal("js.minify = true, want false")
+	}
+	if len(cfg.JS.Audit.Groups) != 1 || cfg.JS.Audit.Groups[0].GzipBudgetBytes != 24576 {
+		t.Fatalf("audit groups = %#v", cfg.JS.Audit.Groups)
 	}
 }
 

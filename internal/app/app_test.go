@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -155,5 +156,152 @@ func TestRunInitForceAppendsEnvExample(t *testing.T) {
 	}
 	if !strings.Contains(content, "BB_CDN_PROVIDER=") {
 		t.Fatalf("expected appended vars in .env.example:\n%s", content)
+	}
+}
+
+func TestRunJSAuditSupportsAuditOnlyProjects(t *testing.T) {
+	tmp := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmp, "vendor.js"), []byte("window.vendor = true;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := filepath.Join(tmp, "buildybud.toml")
+	configText := `
+schema_version = 1
+strict = true
+
+[paths]
+repo_root = "."
+assets_root = "assets"
+manifest_path = "assets/manifest.json"
+
+[js]
+enabled = false
+minify = false
+out_dir = "assets/js"
+hash_length = 8
+
+[js.audit]
+enabled = true
+inline_dirs = []
+max_inline_raw_bytes = 0
+
+[[js.audit.group]]
+name = "vendor"
+files = ["vendor.js"]
+gzip_budget_bytes = 1024
+`
+	if err := os.WriteFile(cfgPath, []byte(strings.TrimSpace(configText)+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"js", "audit", "--config", cfgPath}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("exit code = %d, stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "vendor total:") || !strings.Contains(stdout.String(), "vendor.js") {
+		t.Fatalf("audit output:\n%s", stdout.String())
+	}
+	if _, err := os.Stat(filepath.Join(tmp, "assets")); !os.IsNotExist(err) {
+		t.Fatalf("audit-only command created build output: %v", err)
+	}
+}
+
+func TestRunJSBuildsVerbatimSourcesAndRunsAudit(t *testing.T) {
+	tmp := t.TempDir()
+	srcDir := filepath.Join(tmp, "src")
+	if err := os.MkdirAll(srcDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	source := "// preserved\nwindow.app = true;\n"
+	if err := os.WriteFile(filepath.Join(srcDir, "app.js"), []byte(source), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := filepath.Join(tmp, "buildybud.toml")
+	configText := `
+schema_version = 1
+strict = true
+
+[paths]
+repo_root = "."
+assets_root = "assets"
+manifest_path = "assets/manifest.json"
+
+[js]
+enabled = true
+minify = false
+out_dir = "assets/js"
+hash_length = 8
+src_dirs = ["src"]
+copy_dirs = []
+scan_template_dirs = []
+templui_component_dir = ""
+
+[js.audit]
+enabled = true
+inline_dirs = []
+max_inline_raw_bytes = 0
+`
+	if err := os.WriteFile(cfgPath, []byte(strings.TrimSpace(configText)+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"js", "--config", cfgPath}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("exit code = %d, stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "all total:") || !strings.Contains(stdout.String(), "js/app.js") {
+		t.Fatalf("build audit output:\n%s", stdout.String())
+	}
+	manifestData, err := os.ReadFile(filepath.Join(tmp, "assets", "manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := map[string]string{}
+	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	built, err := os.ReadFile(filepath.Join(tmp, "assets", filepath.FromSlash(manifest["js/app.js"])))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(built) != source {
+		t.Fatalf("verbatim source changed:\n%s", string(built))
+	}
+}
+
+func TestRunJSSkipsDisabledCapability(t *testing.T) {
+	tmp := t.TempDir()
+	cfgPath := filepath.Join(tmp, "buildybud.toml")
+	configText := `
+schema_version = 1
+strict = true
+
+[paths]
+repo_root = "."
+assets_root = "assets"
+manifest_path = "assets/manifest.json"
+
+[js]
+enabled = false
+minify = true
+out_dir = "assets/js"
+hash_length = 8
+
+[js.audit]
+enabled = false
+`
+	if err := os.WriteFile(cfgPath, []byte(strings.TrimSpace(configText)+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"js", "--config", cfgPath}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("exit code = %d, stderr=%s", code, stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(tmp, "assets")); !os.IsNotExist(err) {
+		t.Fatalf("disabled JS command created output: %v", err)
 	}
 }

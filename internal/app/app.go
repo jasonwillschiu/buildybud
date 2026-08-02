@@ -77,7 +77,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		case "css":
 			return runCSS(args[1:], stderr)
 		case "js":
-			return runJS(args[1:], stderr)
+			return runJS(args[1:], stdout, stderr)
 		case "images":
 			return runImages(args[1:], stderr)
 		case "og":
@@ -85,7 +85,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		case "favicon":
 			return runFavicon(args[1:], stderr)
 		case "assets":
-			return runAssets(args[1:], stderr)
+			return runAssets(args[1:], stdout, stderr)
 		case "init":
 			return runInit(args[1:], stdout, stderr)
 		case "doctor":
@@ -209,7 +209,15 @@ func runManifest(args []string, stderr io.Writer) error {
 	})
 }
 
-func runJS(args []string, stderr io.Writer) error {
+func runJS(args []string, stdout, stderr io.Writer) error {
+	subcommand := "build"
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		subcommand = strings.TrimSpace(args[0])
+		args = args[1:]
+	}
+	if subcommand != "build" && subcommand != "audit" {
+		return &usageError{msg: fmt.Sprintf("unknown js subcommand: %s", subcommand)}
+	}
 	fs := flag.NewFlagSet("buildybud js", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", config.DefaultPath, "Path to buildybud TOML config")
@@ -219,26 +227,64 @@ func runJS(args []string, stderr io.Writer) error {
 		}
 		return &usageError{msg: err.Error()}
 	}
+	if fs.NArg() != 0 {
+		return &usageError{msg: "js does not accept positional arguments"}
+	}
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		return err
 	}
+	if subcommand == "audit" {
+		return runJSAuditWithConfig(cfg, stdout)
+	}
+	return runJSWithConfig(cfg, stdout)
+}
+
+func runJSWithConfig(cfg *config.Config, stdout io.Writer) error {
 	if !cfg.JS.Enabled {
 		return nil
 	}
-
-	return js.Run(js.Options{
+	if err := js.Run(js.Options{
 		OutDir:              cfg.RepoPath(cfg.JS.OutDir),
 		AssetsRoot:          cfg.RepoPath(cfg.Paths.AssetsRoot),
 		ManifestPath:        cfg.RepoPath(cfg.Paths.ManifestPath),
 		HashLength:          cfg.JS.HashLength,
+		Minify:              cfg.JS.Minify,
 		SrcDirs:             rebase(cfg, cfg.JS.SrcDirs),
 		CopyDirs:            rebase(cfg, cfg.JS.CopyDirs),
 		ScanTemplateDirs:    rebase(cfg, cfg.JS.ScanTemplateDirs),
 		TempluiComponentDir: cfg.RepoPath(cfg.JS.TempluiComponentDir),
 		Dependencies:        cfg.JS.Dependencies,
+	}); err != nil {
+		return err
+	}
+	return runJSAuditWithConfig(cfg, stdout)
+}
+
+func runJSAuditWithConfig(cfg *config.Config, stdout io.Writer) error {
+	if !cfg.JS.Audit.Enabled {
+		return nil
+	}
+	groups := make([]js.AuditGroup, 0, len(cfg.JS.Audit.Groups))
+	for _, group := range cfg.JS.Audit.Groups {
+		groups = append(groups, js.AuditGroup{
+			Name:            group.Name,
+			Assets:          append([]string(nil), group.Assets...),
+			Files:           rebase(cfg, group.Files),
+			GzipBudgetBytes: group.GzipBudgetBytes,
+		})
+	}
+	_, err := js.Audit(js.AuditOptions{
+		RepoRoot:          cfg.RepoPath("."),
+		AssetsRoot:        cfg.RepoPath(cfg.Paths.AssetsRoot),
+		ManifestPath:      cfg.RepoPath(cfg.Paths.ManifestPath),
+		InlineDirs:        rebase(cfg, cfg.JS.Audit.InlineDirs),
+		MaxInlineRawBytes: cfg.JS.Audit.MaxInlineRawBytes,
+		Groups:            groups,
+		Writer:            stdout,
 	})
+	return err
 }
 
 func runCSS(args []string, stderr io.Writer) error {
@@ -390,7 +436,7 @@ func runFaviconWithConfig(cfg *config.Config) error {
 	})
 }
 
-func runAssets(args []string, stderr io.Writer) error {
+func runAssets(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("buildybud assets", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", config.DefaultPath, "Path to buildybud TOML config")
@@ -417,19 +463,15 @@ func runAssets(args []string, stderr io.Writer) error {
 			return err
 		}
 	}
-	if shouldRun("js") && cfg.JS.Enabled {
-		if err := js.Run(js.Options{
-			OutDir:              cfg.RepoPath(cfg.JS.OutDir),
-			AssetsRoot:          cfg.RepoPath(cfg.Paths.AssetsRoot),
-			ManifestPath:        cfg.RepoPath(cfg.Paths.ManifestPath),
-			HashLength:          cfg.JS.HashLength,
-			SrcDirs:             rebase(cfg, cfg.JS.SrcDirs),
-			CopyDirs:            rebase(cfg, cfg.JS.CopyDirs),
-			ScanTemplateDirs:    rebase(cfg, cfg.JS.ScanTemplateDirs),
-			TempluiComponentDir: cfg.RepoPath(cfg.JS.TempluiComponentDir),
-			Dependencies:        cfg.JS.Dependencies,
-		}); err != nil {
-			return err
+	if shouldRun("js") {
+		if cfg.JS.Enabled {
+			if err := runJSWithConfig(cfg, stdout); err != nil {
+				return err
+			}
+		} else if cfg.JS.Audit.Enabled {
+			if err := runJSAuditWithConfig(cfg, stdout); err != nil {
+				return err
+			}
 		}
 	}
 	if shouldRun("og") && (!shouldRun("images") || !cfg.Images.Enabled) {
@@ -631,7 +673,7 @@ Commands:
   assets             Build configured web assets (css, js, og/images, favicon, templui-map)
   css                Build Tailwind CSS and update manifest.json
   manifest           Hash a built file and update manifest.json
-  js                 Build and hash JS assets, copy templui JS
+  js                 Build JS assets or audit their size (js audit)
   og                 Generate Open Graph PNG sources
   images             Generate image variants via vips
   favicon            Copy favicon assets into embedded assets
@@ -650,7 +692,8 @@ Examples:
   %s doctor
   %s assets --config ./buildybud.toml
   %s js --config ./buildybud.toml
+  %s js audit --config ./buildybud.toml
   %s og --config ./buildybud.toml
   %s cdn purge --provider bunny /blog /projects/demo
-`, toolName, ToolVersion, toolName, ToolVersion, config.DefaultPath, toolName, toolName, toolName, toolName, toolName, toolName)
+`, toolName, ToolVersion, toolName, ToolVersion, config.DefaultPath, toolName, toolName, toolName, toolName, toolName, toolName, toolName)
 }

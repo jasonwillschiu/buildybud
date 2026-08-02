@@ -1,3 +1,9 @@
+# 0.10.0 - Add: Configurable JS size audits
+- Add `buildybud js audit` with named gzip budgets, direct vendor files, and inline-script checks.
+- Add optional JS minification while preserving per-file fingerprinting and manifest output.
+- Disable JS build and audit during repo discovery when no source or copy directory exists.
+- Run enabled audits after `buildybud js` and the JS stage of `buildybud assets`.
+
 # 0.9.0 - Update: Rich OG card composition with text fitting
 - Refactor OG card rendering to multi-layer pipeline: cover, wash, brand, card text, footer URL
 - Add auto-fitting title/subtitle with font size reduction (68→52px) and ellipsis truncation
