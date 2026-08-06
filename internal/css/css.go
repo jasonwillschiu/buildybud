@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 type Options struct {
@@ -13,6 +14,40 @@ type Options struct {
 	Output  string
 	Content []string
 	Minify  bool
+}
+
+type Bundle struct {
+	Name  string
+	Input string
+}
+
+type CompiledBundle struct {
+	Name string
+	Path string
+}
+
+func CompileBundles(command string, minify bool, bundles []Bundle) ([]CompiledBundle, func(), error) {
+	tmpDir, err := os.MkdirTemp("", "buildybud-css-*")
+	if err != nil {
+		return nil, func() {}, fmt.Errorf("create CSS build directory: %w", err)
+	}
+	cleanup := func() { _ = os.RemoveAll(tmpDir) }
+	compiled := make([]CompiledBundle, 0, len(bundles))
+	for index, bundle := range bundles {
+		name := strings.TrimSpace(bundle.Name)
+		output := filepath.Join(tmpDir, fmt.Sprintf("%03d-%s.css", index, name))
+		if err := Run(Options{
+			Command: command,
+			Input:   bundle.Input,
+			Output:  output,
+			Minify:  minify,
+		}); err != nil {
+			cleanup()
+			return nil, func() {}, fmt.Errorf("compile CSS bundle %q: %w", name, err)
+		}
+		compiled = append(compiled, CompiledBundle{Name: name, Path: output})
+	}
+	return compiled, cleanup, nil
 }
 
 func Run(opts Options) error {

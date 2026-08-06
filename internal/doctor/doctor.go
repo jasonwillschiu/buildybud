@@ -63,8 +63,17 @@ func checkPaths(cfg *config.Config) error {
 		}
 	}
 	if cfg.CSS.Enabled {
-		if _, err := os.Stat(cfg.RepoPath(cfg.CSS.Input)); err != nil {
-			return fmt.Errorf("missing css input: %s", cfg.CSS.Input)
+		inputs := []string{cfg.CSS.Input}
+		if cfg.CSS.Mode == "bundles" {
+			inputs = inputs[:0]
+			for _, bundle := range cfg.CSS.Bundles {
+				inputs = append(inputs, bundle.Input)
+			}
+		}
+		for _, input := range inputs {
+			if _, err := os.Stat(cfg.RepoPath(input)); err != nil {
+				return fmt.Errorf("missing css input: %s", input)
+			}
 		}
 	}
 	if cfg.Images.Enabled {

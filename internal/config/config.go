@@ -38,12 +38,32 @@ type PathsConfig struct {
 }
 
 type CSSConfig struct {
-	Enabled bool     `toml:"enabled"`
-	Command string   `toml:"command"`
-	Input   string   `toml:"input"`
-	Output  string   `toml:"output"`
-	Content []string `toml:"content"`
-	Minify  bool     `toml:"minify"`
+	Enabled bool           `toml:"enabled"`
+	Mode    string         `toml:"mode"`
+	Command string         `toml:"command"`
+	Input   string         `toml:"input"`
+	Output  string         `toml:"output"`
+	Content []string       `toml:"content"`
+	Minify  bool           `toml:"minify"`
+	Bundles []CSSBundle    `toml:"bundle"`
+	Audit   CSSAuditConfig `toml:"audit"`
+}
+
+type CSSBundle struct {
+	Name   string `toml:"name"`
+	Input  string `toml:"input"`
+	Output string `toml:"output"`
+}
+
+type CSSAuditConfig struct {
+	Enabled bool            `toml:"enabled"`
+	Groups  []CSSAuditGroup `toml:"group"`
+}
+
+type CSSAuditGroup struct {
+	Name            string   `toml:"name"`
+	Bundles         []string `toml:"bundles"`
+	GzipBudgetBytes int      `toml:"gzip_budget_bytes"`
 }
 
 type JSConfig struct {
@@ -142,6 +162,7 @@ func Default() *Config {
 		},
 		CSS: CSSConfig{
 			Enabled: true,
+			Mode:    "single",
 			Command: "tailwindcss",
 			Input:   "assets/src/css/input.css",
 			Output:  "assets/embed/assets/css/app.css",
@@ -303,11 +324,72 @@ func (c *Config) Validate() error {
 		if c.CSS.Command == "" {
 			return errors.New("css.command is required when css.enabled is true")
 		}
-		if c.CSS.Input == "" {
-			return errors.New("css.input is required when css.enabled is true")
+		mode := strings.TrimSpace(c.CSS.Mode)
+		if mode == "" {
+			mode = "single"
+			c.CSS.Mode = mode
 		}
-		if c.CSS.Output == "" {
-			return errors.New("css.output is required when css.enabled is true")
+		switch mode {
+		case "single":
+			if c.CSS.Input == "" {
+				return errors.New("css.input is required in single mode")
+			}
+			if c.CSS.Output == "" {
+				return errors.New("css.output is required in single mode")
+			}
+		case "bundles":
+			if len(c.CSS.Bundles) == 0 {
+				return errors.New("css.bundle is required in bundles mode")
+			}
+			bundleNames := map[string]bool{}
+			bundleOutputs := map[string]bool{}
+			for _, bundle := range c.CSS.Bundles {
+				name := strings.TrimSpace(bundle.Name)
+				if name == "" {
+					return errors.New("css.bundle name is required")
+				}
+				if bundleNames[name] {
+					return fmt.Errorf("duplicate css.bundle name: %s", name)
+				}
+				bundleNames[name] = true
+				if strings.TrimSpace(bundle.Input) == "" || strings.TrimSpace(bundle.Output) == "" {
+					return fmt.Errorf("css.bundle %q requires input and output", name)
+				}
+				output := filepath.Clean(c.RepoPath(bundle.Output))
+				if bundleOutputs[output] {
+					return fmt.Errorf("duplicate css.bundle output: %s", bundle.Output)
+				}
+				bundleOutputs[output] = true
+				assetsRoot := filepath.Clean(c.RepoPath(c.Paths.AssetsRoot))
+				rel, err := filepath.Rel(assetsRoot, output)
+				if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+					return fmt.Errorf("css.bundle %q output must be inside paths.assets_root", name)
+				}
+			}
+			groupNames := map[string]bool{}
+			for _, group := range c.CSS.Audit.Groups {
+				name := strings.TrimSpace(group.Name)
+				if name == "" {
+					return errors.New("css.audit.group name is required")
+				}
+				if groupNames[name] {
+					return fmt.Errorf("duplicate css.audit.group name: %s", name)
+				}
+				groupNames[name] = true
+				if len(group.Bundles) == 0 {
+					return fmt.Errorf("css.audit.group %q requires bundles", name)
+				}
+				if group.GzipBudgetBytes < 0 {
+					return fmt.Errorf("css.audit.group %q gzip_budget_bytes must be zero or greater", name)
+				}
+				for _, bundleName := range group.Bundles {
+					if !bundleNames[bundleName] {
+						return fmt.Errorf("css.audit.group %q references unknown bundle %q", name, bundleName)
+					}
+				}
+			}
+		default:
+			return fmt.Errorf("css.mode must be single or bundles, got %q", c.CSS.Mode)
 		}
 	}
 	if c.Favicon.Enabled {
@@ -473,11 +555,30 @@ func (c *Config) MarshalTOML() []byte {
 
 	buf.WriteString("\n[css]\n")
 	writeBool("enabled", c.CSS.Enabled)
+	writeKV("mode", c.CSS.Mode)
 	writeKV("command", c.CSS.Command)
-	writeKV("input", filepath.ToSlash(c.CSS.Input))
-	writeKV("output", filepath.ToSlash(c.CSS.Output))
-	writeList("content", c.CSS.Content)
 	writeBool("minify", c.CSS.Minify)
+	if c.CSS.Mode != "bundles" {
+		writeKV("input", filepath.ToSlash(c.CSS.Input))
+		writeKV("output", filepath.ToSlash(c.CSS.Output))
+		writeList("content", c.CSS.Content)
+	}
+	for _, bundle := range c.CSS.Bundles {
+		buf.WriteString("\n[[css.bundle]]\n")
+		writeKV("name", bundle.Name)
+		writeKV("input", filepath.ToSlash(bundle.Input))
+		writeKV("output", filepath.ToSlash(bundle.Output))
+	}
+	if c.CSS.Mode == "bundles" || c.CSS.Audit.Enabled || len(c.CSS.Audit.Groups) > 0 {
+		buf.WriteString("\n[css.audit]\n")
+		writeBool("enabled", c.CSS.Audit.Enabled)
+		for _, group := range c.CSS.Audit.Groups {
+			buf.WriteString("\n[[css.audit.group]]\n")
+			writeKV("name", group.Name)
+			writeList("bundles", group.Bundles)
+			writeInt("gzip_budget_bytes", group.GzipBudgetBytes)
+		}
+	}
 
 	buf.WriteString("\n[js]\n")
 	writeBool("enabled", c.JS.Enabled)

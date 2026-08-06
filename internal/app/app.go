@@ -75,7 +75,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		case "manifest":
 			return runManifest(args[1:], stderr)
 		case "css":
-			return runCSS(args[1:], stderr)
+			return runCSS(args[1:], stdout, stderr)
 		case "js":
 			return runJS(args[1:], stdout, stderr)
 		case "images":
@@ -287,7 +287,15 @@ func runJSAuditWithConfig(cfg *config.Config, stdout io.Writer) error {
 	return err
 }
 
-func runCSS(args []string, stderr io.Writer) error {
+func runCSS(args []string, stdout, stderr io.Writer) error {
+	subcommand := "build"
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		subcommand = strings.TrimSpace(args[0])
+		args = args[1:]
+	}
+	if subcommand != "build" && subcommand != "audit" {
+		return &usageError{msg: fmt.Sprintf("unknown css subcommand: %s", subcommand)}
+	}
 	fs := flag.NewFlagSet("buildybud css", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", config.DefaultPath, "Path to buildybud TOML config")
@@ -301,12 +309,59 @@ func runCSS(args []string, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	return runCSSWithConfig(cfg)
+	if subcommand == "audit" {
+		return runCSSAuditWithConfig(cfg, stdout)
+	}
+	return runCSSWithConfig(cfg, stdout)
 }
 
-func runCSSWithConfig(cfg *config.Config) error {
+func runCSSWithConfig(cfg *config.Config, stdout io.Writer) error {
 	if !cfg.CSS.Enabled {
 		return nil
+	}
+	if cfg.CSS.Mode == "bundles" {
+		bundles := make([]css.Bundle, 0, len(cfg.CSS.Bundles))
+		logicalPaths := make(map[string]string, len(cfg.CSS.Bundles))
+		for _, bundle := range cfg.CSS.Bundles {
+			bundles = append(bundles, css.Bundle{Name: bundle.Name, Input: cfg.RepoPath(bundle.Input)})
+			output := cfg.RepoPath(bundle.Output)
+			logical, err := logicalAssetPath(cfg, output)
+			if err != nil {
+				return err
+			}
+			logicalPaths[bundle.Name] = logical
+		}
+		compiled, cleanup, err := css.CompileBundles(cfg.CSS.Command, cfg.CSS.Minify, bundles)
+		if err != nil {
+			return err
+		}
+		defer cleanup()
+
+		compiledPaths := make(map[string]string, len(compiled))
+		for _, bundle := range compiled {
+			compiledPaths[bundle.Name] = bundle.Path
+		}
+		if cfg.CSS.Audit.Enabled {
+			if _, err := css.Audit(compiledPaths, cssAuditGroups(cfg), stdout); err != nil {
+				return err
+			}
+		}
+
+		assets := make([]manifest.BatchAsset, 0, len(compiled))
+		for _, bundle := range compiled {
+			assets = append(assets, manifest.BatchAsset{
+				InputPath:   bundle.Path,
+				LogicalPath: logicalPaths[bundle.Name],
+			})
+		}
+		return manifest.RunBatch(manifest.BatchOptions{
+			Assets:       assets,
+			ManifestPath: cfg.RepoPath(cfg.Paths.ManifestPath),
+			AssetsRoot:   cfg.RepoPath(cfg.Paths.AssetsRoot),
+			HashLength:   cfg.Manifest.HashLength,
+			OwnedPrefix:  "css/",
+			CleanupStale: cfg.Manifest.CleanupStale,
+		})
 	}
 	output := cfg.RepoPath(cfg.CSS.Output)
 	if err := css.Run(css.Options{
@@ -329,6 +384,45 @@ func runCSSWithConfig(cfg *config.Config) error {
 		AssetsRoot:   cfg.RepoPath(cfg.Paths.AssetsRoot),
 		HashLength:   cfg.Manifest.HashLength,
 	})
+}
+
+func runCSSAuditWithConfig(cfg *config.Config, stdout io.Writer) error {
+	if !cfg.CSS.Enabled || !cfg.CSS.Audit.Enabled {
+		return nil
+	}
+	if cfg.CSS.Mode != "bundles" {
+		return fmt.Errorf("css audit requires css.mode = bundles")
+	}
+	logicalPaths := make(map[string]string, len(cfg.CSS.Bundles))
+	for _, bundle := range cfg.CSS.Bundles {
+		logical, err := logicalAssetPath(cfg, cfg.RepoPath(bundle.Output))
+		if err != nil {
+			return err
+		}
+		logicalPaths[bundle.Name] = logical
+	}
+	bundlePaths, err := css.ManifestBundlePaths(
+		cfg.RepoPath(cfg.Paths.ManifestPath),
+		cfg.RepoPath(cfg.Paths.AssetsRoot),
+		logicalPaths,
+	)
+	if err != nil {
+		return err
+	}
+	_, err = css.Audit(bundlePaths, cssAuditGroups(cfg), stdout)
+	return err
+}
+
+func cssAuditGroups(cfg *config.Config) []css.AuditGroup {
+	groups := make([]css.AuditGroup, 0, len(cfg.CSS.Audit.Groups))
+	for _, group := range cfg.CSS.Audit.Groups {
+		groups = append(groups, css.AuditGroup{
+			Name:            group.Name,
+			Bundles:         append([]string(nil), group.Bundles...),
+			GzipBudgetBytes: group.GzipBudgetBytes,
+		})
+	}
+	return groups
 }
 
 func runImages(args []string, stderr io.Writer) error {
@@ -459,7 +553,7 @@ func runAssets(args []string, stdout, stderr io.Writer) error {
 		return len(selected) == 0 || selected[name]
 	}
 	if shouldRun("css") {
-		if err := runCSSWithConfig(cfg); err != nil {
+		if err := runCSSWithConfig(cfg, stdout); err != nil {
 			return err
 		}
 	}
@@ -671,7 +765,7 @@ Quick start:
 Commands:
   init               Scan the repo and generate a starter buildybud.toml
   assets             Build configured web assets (css, js, og/images, favicon, templui-map)
-  css                Build Tailwind CSS and update manifest.json
+  css                Build or audit Tailwind CSS bundles (css audit)
   manifest           Hash a built file and update manifest.json
   js                 Build JS assets or audit their size (js audit)
   og                 Generate Open Graph PNG sources
@@ -691,9 +785,10 @@ Examples:
   %s init
   %s doctor
   %s assets --config ./buildybud.toml
+  %s css audit --config ./buildybud.toml
   %s js --config ./buildybud.toml
   %s js audit --config ./buildybud.toml
   %s og --config ./buildybud.toml
   %s cdn purge --provider bunny /blog /projects/demo
-`, toolName, ToolVersion, toolName, ToolVersion, config.DefaultPath, toolName, toolName, toolName, toolName, toolName, toolName, toolName)
+`, toolName, ToolVersion, toolName, ToolVersion, config.DefaultPath, toolName, toolName, toolName, toolName, toolName, toolName, toolName, toolName)
 }

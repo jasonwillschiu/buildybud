@@ -16,7 +16,7 @@
 - Module: `github.com/jasonwillschiu/buildybud`
 - Entry point: `main.go`
 - Config file: `buildybud.toml` (repo root or Go SSR app root)
-- Install: `go install github.com/jasonwillschiu/buildybud@v0.10.0`
+- Install: `go install github.com/jasonwillschiu/buildybud@v0.11.0`
 - Primary target: repos using `go-datastar1` templates and the matching asset layout
 - Taskfile remains the public command layer; buildybud owns reusable Go SSR web asset steps.
 
@@ -28,6 +28,7 @@
 - `buildybud init --dry-run` writes no files, and `init` only updates `.env.example` when the generated config is inside the target repo.
 - Config paths resolve relative to `buildybud.toml` unless `paths.repo_root` is absolute.
 - Asset capability sections support `enabled = false`; `doctor` must only require enabled tools and paths. JS discovery disables build/audit without source or copy directories; minification and auditing are separate controls.
+- CSS `single` mode remains backward compatible. CSS `bundles` mode compiles and audits every named entry before one atomic manifest publish; failed builds must leave the shipped manifest unchanged.
 - `buildybud init` seeds JS dependency defaults for `selectbox`, `datepicker`, and `timepicker` with `input` + `popover`, and `tagsinput` with `popover`.
 - `buildybud.toml` must exist or CLI tells user to run `buildybud init`.
 - `buildybud assets` is a narrow asset macro, not a replacement for Taskfile CI orchestration.
@@ -39,7 +40,7 @@ main.go                     CLI entry point
 internal/app/               Root command, help, init, doctor, version
 internal/cdn/               CDN plan/purge logic (Bunny + Cloudflare)
 internal/config/            TOML config parsing + validation
-internal/css/               Tailwind CSS build command wrapper
+internal/css/               Tailwind CSS compilation and bundle size audits
 internal/envfile/           .env loader + .env.example writer
 internal/favicon/           Favicon copy step
 internal/js/                JS processing and size audits

@@ -1,3 +1,8 @@
+# 0.11.0 - Add: Transactional named CSS bundles
+- Add explicit named CSS entry points with independent fingerprinted manifest assets.
+- Add CSS gzip audit groups and enforce configured budgets before publishing.
+- Publish a complete CSS bundle set through one atomic manifest update so failed builds retain the last good assets.
+
 # 0.10.0 - Add: Configurable JS size audits
 - Add `buildybud js audit` with named gzip budgets, direct vendor files, and inline-script checks.
 - Add optional JS minification while preserving per-file fingerprinting and manifest output.

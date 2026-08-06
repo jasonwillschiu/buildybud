@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -23,6 +24,7 @@ func TestRunHelpShowsQuickStartAndVersion(t *testing.T) {
 	for _, want := range []string{
 		"Quick start:",
 		"buildybud init",
+		"css audit",
 		"--version, -version",
 		"buildybud version v0.0.0",
 	} {
@@ -269,6 +271,128 @@ max_inline_raw_bytes = 0
 	if string(built) != source {
 		t.Fatalf("verbatim source changed:\n%s", string(built))
 	}
+}
+
+func TestRunCSSBuildsNamedBundlesAndAuditsInitialGroups(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake Tailwind helper uses a POSIX shell")
+	}
+	tmp := t.TempDir()
+	command := writeFakeTailwind(t, tmp)
+	if err := os.MkdirAll(filepath.Join(tmp, "css"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmp, "css", "core.css"), []byte("body{color:red}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmp, "css", "home.css"), []byte(".home{display:block}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := filepath.Join(tmp, "buildybud.toml")
+	configText := `
+schema_version = 1
+strict = true
+
+[paths]
+repo_root = "."
+assets_root = "assets"
+manifest_path = "assets/manifest.json"
+
+[css]
+enabled = true
+mode = "bundles"
+command = "` + filepath.ToSlash(command) + `"
+minify = true
+
+[[css.bundle]]
+name = "core"
+input = "css/core.css"
+output = "assets/css/core.css"
+
+[[css.bundle]]
+name = "home"
+input = "css/home.css"
+output = "assets/css/home.css"
+
+[css.audit]
+enabled = true
+
+[[css.audit.group]]
+name = "home-initial"
+bundles = ["core", "home"]
+gzip_budget_bytes = 1024
+`
+	if err := os.WriteFile(cfgPath, []byte(strings.TrimSpace(configText)+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"css", "--config", cfgPath}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("exit code = %d, stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "home-initial total:") {
+		t.Fatalf("CSS audit output:\n%s", stdout.String())
+	}
+	manifestData, err := os.ReadFile(filepath.Join(tmp, "assets", "manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := map[string]string{}
+	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	for _, logical := range []string{"css/core.css", "css/home.css"} {
+		hashed := manifest[logical]
+		if hashed == "" {
+			t.Fatalf("manifest missing %q: %#v", logical, manifest)
+		}
+		if _, err := os.Stat(filepath.Join(tmp, "assets", filepath.FromSlash(hashed))); err != nil {
+			t.Fatalf("missing hashed bundle %q: %v", logical, err)
+		}
+	}
+
+	if err := os.WriteFile(filepath.Join(tmp, "css", "home.css"), []byte("FAIL"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	code = Run([]string{"css", "--config", cfgPath}, &stdout, &stderr)
+	if code == ExitOK {
+		t.Fatal("expected second bundle compilation to fail")
+	}
+	afterFailure, err := os.ReadFile(filepath.Join(tmp, "assets", "manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(afterFailure) != string(manifestData) {
+		t.Fatalf("manifest changed after failed bundle build:\n%s", afterFailure)
+	}
+}
+
+func writeFakeTailwind(t *testing.T, root string) string {
+	t.Helper()
+	path := filepath.Join(root, "fake-tailwind")
+	script := `#!/bin/sh
+input=""
+output=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -i) shift; input="$1" ;;
+    -o) shift; output="$1" ;;
+  esac
+  shift
+done
+if grep -q FAIL "$input"; then
+  exit 9
+fi
+mkdir -p "$(dirname "$output")"
+cp "$input" "$output"
+`
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func TestRunJSSkipsDisabledCapability(t *testing.T) {

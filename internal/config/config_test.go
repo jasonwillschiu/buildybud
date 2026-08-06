@@ -176,6 +176,58 @@ gzip_budget_bytes = 24576
 	}
 }
 
+func TestLoadSupportsNamedCSSBundlesAndAuditGroups(t *testing.T) {
+	tmp := t.TempDir()
+	cfgPath := filepath.Join(tmp, "buildybud.toml")
+	content := `
+schema_version = 1
+strict = true
+
+[paths]
+repo_root = "."
+assets_root = "assets"
+manifest_path = "assets/manifest.json"
+
+[css]
+enabled = true
+mode = "bundles"
+command = "tailwindcss"
+minify = true
+
+[[css.bundle]]
+name = "core"
+input = "css/core.css"
+output = "assets/css/core.css"
+
+[[css.bundle]]
+name = "home"
+input = "css/home.css"
+output = "assets/css/home.css"
+
+[css.audit]
+enabled = true
+
+[[css.audit.group]]
+name = "home-initial"
+bundles = ["core", "home"]
+gzip_budget_bytes = 24576
+`
+	if err := os.WriteFile(cfgPath, []byte(strings.TrimSpace(content)+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.CSS.Mode != "bundles" || len(cfg.CSS.Bundles) != 2 {
+		t.Fatalf("CSS config = %#v", cfg.CSS)
+	}
+	if len(cfg.CSS.Audit.Groups) != 1 || cfg.CSS.Audit.Groups[0].Bundles[1] != "home" {
+		t.Fatalf("CSS audit groups = %#v", cfg.CSS.Audit.Groups)
+	}
+}
+
 func TestInitDefaultConfigPathUsesRepoRoot(t *testing.T) {
 	tmp := t.TempDir()
 	repoRoot := filepath.Join(tmp, "repo")

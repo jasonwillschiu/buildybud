@@ -6,7 +6,7 @@ It is specifically built for repos using `go-datastar1` templates and the surrou
 ## Install
 
 ```bash
-	go install github.com/jasonwillschiu/buildybud@v0.10.0
+	go install github.com/jasonwillschiu/buildybud@v0.11.0
 ```
 
 ## Set Up In A Repo
@@ -29,6 +29,7 @@ Use `buildybud init --force` to overwrite an existing config, or `buildybud init
 - `buildybud init`
 - `buildybud assets`
 - `buildybud css`
+- `buildybud css audit`
 - `buildybud manifest`
 - `buildybud js`
 - `buildybud js audit`
@@ -61,7 +62,37 @@ Paths in the config are resolved relative to the directory containing `buildybud
 
 The asset capability sections support `enabled = false` for repos that do not use a step. `doctor` only checks tools and paths for enabled capabilities.
 
-`buildybud css` runs the configured Tailwind command, writes the configured CSS output, hashes it, and updates the asset manifest. `buildybud og` renders configured route and blog Open Graph PNG sources. `buildybud images` runs enabled OG generation first, then creates optimized image variants. `buildybud favicon` copies favicon files into the embedded assets directory. `buildybud assets` runs enabled asset steps in order: CSS, JS, OG/images, favicon, and templui map generation. Use `buildybud assets --only css,js` to run a subset.
+`buildybud css` supports the backward-compatible `single` mode and a `bundles` mode for explicit named entry points. Bundle mode compiles every entry into a staging directory, audits the staged output, and publishes all fingerprints behind one atomic manifest update. If any compile or audit fails, the current manifest and shipped CSS remain unchanged. `buildybud css audit` checks the currently published bundle files without rebuilding them.
+
+```toml
+[css]
+enabled = true
+mode = "bundles"
+command = "tailwindcss"
+minify = true
+
+[[css.bundle]]
+name = "home"
+input = "assets/src/css/entries/home.css"
+output = "assets/embed/assets/css/home.css"
+
+[[css.bundle]]
+name = "app"
+input = "assets/src/css/entries/app.css"
+output = "assets/embed/assets/css/app.css"
+
+[css.audit]
+enabled = true
+
+[[css.audit.group]]
+name = "home-initial"
+bundles = ["home"]
+gzip_budget_bytes = 28000
+```
+
+Each audit group reports raw and gzip bytes. A zero gzip budget reports size without enforcing a limit. Named outputs must be unique and live beneath `paths.assets_root`; audit groups may only reference configured bundle names.
+
+`buildybud og` renders configured route and blog Open Graph PNG sources. `buildybud images` runs enabled OG generation first, then creates optimized image variants. `buildybud favicon` copies favicon files into the embedded assets directory. `buildybud assets` runs enabled asset steps in order: CSS, JS, OG/images, favicon, and templui map generation. Use `buildybud assets --only css,js` to run a subset.
 
 ## JavaScript processing and size audits
 
