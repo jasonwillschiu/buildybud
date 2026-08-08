@@ -1,3 +1,6 @@
+# 0.11.2 - Update: Readme version pin
+- v0.11.2 now
+
 # 0.11.1 - Add: Native plain-CSS builds
 - Add a built-in `css.command = "native"` processor for copying or minifying plain CSS without Tailwind or another external CLI.
 
