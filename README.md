@@ -62,7 +62,7 @@ Paths in the config are resolved relative to the directory containing `buildybud
 
 The asset capability sections support `enabled = false` for repos that do not use a step. `doctor` only checks tools and paths for enabled capabilities.
 
-`buildybud css` supports the backward-compatible `single` mode and a `bundles` mode for explicit named entry points. Bundle mode compiles every entry into a staging directory, audits the staged output, and publishes all fingerprints behind one atomic manifest update. If any compile or audit fails, the current manifest and shipped CSS remain unchanged. `buildybud css audit` checks the currently published bundle files without rebuilding them.
+`buildybud css` supports the backward-compatible `single` mode and a `bundles` mode for explicit named entry points. Use `command = "native"` to copy or minify plain CSS with Buildybud's built-in processor and no external CLI. Other command values invoke an external compiler with Tailwind-compatible flags. Bundle mode compiles every entry into a staging directory, audits the staged output, and publishes all fingerprints behind one atomic manifest update. If any compile or audit fails, the current manifest and shipped CSS remain unchanged. `buildybud css audit` checks the currently published bundle files without rebuilding them.
 
 ```toml
 [css]
@@ -208,7 +208,7 @@ Use these task mappings in `jasonchiu-com4`:
 
 ## Notes
 
-- `css` requires `tailwindcss` in `PATH` unless disabled in config.
+- `css` requires the configured external command in `PATH`; `command = "native"` has no external dependency.
 - `images` requires `vips` in `PATH`.
 - `og` requires configured background, logo, font, route, and blog paths when enabled.
 - `templui-map generate` is declarative from TOML rules.

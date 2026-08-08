@@ -6,6 +6,7 @@ import (
 	"os/exec"
 
 	"github.com/jasonwillschiu/buildybud/internal/config"
+	"github.com/jasonwillschiu/buildybud/internal/css"
 	"github.com/jasonwillschiu/buildybud/internal/templuimap"
 )
 
@@ -17,7 +18,7 @@ func Run(cfg *config.Config) error {
 		{name: "config", fn: cfg.Validate},
 		{name: "paths", fn: func() error { return checkPaths(cfg) }},
 	}
-	if cfg.CSS.Enabled {
+	if cfg.CSS.Enabled && cfg.CSS.Command != css.NativeCommand {
 		checks = append(checks, struct {
 			name string
 			fn   func() error

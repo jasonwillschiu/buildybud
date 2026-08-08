@@ -8,7 +8,7 @@
 - Entry: `main.go` -> `internal/app/app.go`
 - CDN: `internal/cdn/cdn.go`
 - Config: `internal/config/config.go`
-- CSS: `internal/css/` (Tailwind compilation and bundle audits)
+- CSS: `internal/css/` (native minification, external compilation, and bundle audits)
 - Favicon: `internal/favicon/favicon.go`
 - OG: `internal/og/og.go` + `internal/og/types.go`
 - Env loader: `internal/envfile/envfile.go`
@@ -27,7 +27,7 @@
 - `buildybud.toml` required at repo/app root; `buildybud init` generates it
 - `assets` macro runs enabled asset steps; keep CI/build orchestration in Taskfile
 - `--version` = embedded CLI version; `version` subcommand = changelog version
-- `css` command requires `tailwindcss` in PATH. Keep `single` mode compatible; `bundles` mode must compile and audit all entries before one atomic manifest publish.
+- `css.command = "native"` copies or minifies plain CSS without an external CLI. Other command values must resolve in PATH and receive Tailwind-compatible flags. Keep `single` mode compatible; `bundles` mode must compile and audit all entries before one atomic manifest publish.
 - `images` command requires `vips` in PATH
 - `og` render uses multi-step composition: cover → wash → brand → card text → footer URL; title is required, text auto-fits via font size reduction (68→52px) + ellipsis truncation
 - Never hardcode CDN credentials

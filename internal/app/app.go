@@ -765,7 +765,7 @@ Quick start:
 Commands:
   init               Scan the repo and generate a starter buildybud.toml
   assets             Build configured web assets (css, js, og/images, favicon, templui-map)
-  css                Build or audit Tailwind CSS bundles (css audit)
+  css                Build or audit CSS bundles (css audit)
   manifest           Hash a built file and update manifest.json
   js                 Build JS assets or audit their size (js audit)
   og                 Generate Open Graph PNG sources

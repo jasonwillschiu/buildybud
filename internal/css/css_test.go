@@ -52,3 +52,44 @@ exit 1
 		t.Fatalf("output = %q", string(data))
 	}
 }
+
+func TestRunNativeMinifiesCSS(t *testing.T) {
+	tmp := t.TempDir()
+	input := filepath.Join(tmp, "site.css")
+	output := filepath.Join(tmp, "assets", "site.css")
+	if err := os.WriteFile(input, []byte("/* source */\nbody { color: red; margin: 0 1rem; }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Run(Options{Command: NativeCommand, Input: input, Output: output, Minify: true}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	data, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(data), "body{color:red;margin:0 1rem}"; got != want {
+		t.Fatalf("output = %q, want %q", got, want)
+	}
+}
+
+func TestRunNativeCopiesCSSWhenMinifyDisabled(t *testing.T) {
+	tmp := t.TempDir()
+	input := filepath.Join(tmp, "site.css")
+	output := filepath.Join(tmp, "assets", "site.css")
+	source := "body { color: red; }\n"
+	if err := os.WriteFile(input, []byte(source), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Run(Options{Command: NativeCommand, Input: input, Output: output}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	data, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != source {
+		t.Fatalf("output = %q, want verbatim source", string(data))
+	}
+}

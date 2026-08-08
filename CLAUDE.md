@@ -40,7 +40,7 @@ main.go                     CLI entry point
 internal/app/               Root command, help, init, doctor, version
 internal/cdn/               CDN plan/purge logic (Bunny + Cloudflare)
 internal/config/            TOML config parsing + validation
-internal/css/               Tailwind CSS compilation and bundle size audits
+internal/css/               Native/external CSS processing and bundle size audits
 internal/envfile/           .env loader + .env.example writer
 internal/favicon/           Favicon copy step
 internal/js/                JS processing and size audits

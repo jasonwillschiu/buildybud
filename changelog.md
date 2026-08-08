@@ -1,3 +1,6 @@
+# 0.11.1 - Add: Native plain-CSS builds
+- Add a built-in `css.command = "native"` processor for copying or minifying plain CSS without Tailwind or another external CLI.
+
 # 0.11.0 - Add: Transactional named CSS bundles
 - Add explicit named CSS entry points with independent fingerprinted manifest assets.
 - Add CSS gzip audit groups and enforce configured budgets before publishing.

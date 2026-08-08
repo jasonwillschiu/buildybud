@@ -6,7 +6,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	minify "github.com/tdewolff/minify/v2"
+	minifycss "github.com/tdewolff/minify/v2/css"
 )
+
+const NativeCommand = "native"
 
 type Options struct {
 	Command string
@@ -57,11 +62,14 @@ func Run(opts Options) error {
 	if opts.Input == "" || opts.Output == "" {
 		return fmt.Errorf("css input and output are required")
 	}
-	if _, err := exec.LookPath(opts.Command); err != nil {
-		return fmt.Errorf("%s CLI not found in PATH", opts.Command)
-	}
 	if err := os.MkdirAll(filepath.Dir(opts.Output), 0o755); err != nil {
 		return fmt.Errorf("ensure css output dir: %w", err)
+	}
+	if opts.Command == NativeCommand {
+		return runNative(opts)
+	}
+	if _, err := exec.LookPath(opts.Command); err != nil {
+		return fmt.Errorf("%s CLI not found in PATH", opts.Command)
 	}
 
 	args := []string{"-i", opts.Input, "-o", opts.Output}
@@ -77,6 +85,26 @@ func Run(opts Options) error {
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("%s failed: %w", opts.Command, err)
+	}
+	return nil
+}
+
+func runNative(opts Options) error {
+	input, err := os.ReadFile(opts.Input)
+	if err != nil {
+		return fmt.Errorf("read css input: %w", err)
+	}
+	output := input
+	if opts.Minify {
+		processor := minify.New()
+		processor.AddFunc("text/css", minifycss.Minify)
+		output, err = processor.Bytes("text/css", input)
+		if err != nil {
+			return fmt.Errorf("minify css: %w", err)
+		}
+	}
+	if err := os.WriteFile(opts.Output, output, 0o644); err != nil {
+		return fmt.Errorf("write css output: %w", err)
 	}
 	return nil
 }
