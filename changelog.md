@@ -1,3 +1,9 @@
+# 0.12.0 - Add: Inline image configuration
+- Add inline image source, output, format, width, and quality settings to `buildybud.toml`.
+- Keep legacy JSON configuration available as a mutually exclusive migration path.
+- Resolve image filesystem paths from the configured app root while preserving repo-relative manifest and cache paths.
+- Validate image widths, qualities, and prune-safe output directories.
+
 # 0.11.2 - Update: Readme version pin
 - v0.11.2 now
 

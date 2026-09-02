@@ -78,8 +78,12 @@ func checkPaths(cfg *config.Config) error {
 		}
 	}
 	if cfg.Images.Enabled {
-		if _, err := os.Stat(cfg.RepoPath(cfg.Images.ConfigPath)); err != nil {
-			return fmt.Errorf("missing images config: %s", cfg.Images.ConfigPath)
+		if cfg.Images.ConfigPath != "" {
+			if _, err := os.Stat(cfg.RepoPath(cfg.Images.ConfigPath)); err != nil {
+				return fmt.Errorf("missing images config: %s", cfg.Images.ConfigPath)
+			}
+		} else if info, err := os.Stat(cfg.RepoPath(cfg.Images.SourceDir)); err != nil || !info.IsDir() {
+			return fmt.Errorf("missing images source directory: %s", cfg.Images.SourceDir)
 		}
 	}
 	if cfg.OG.Enabled {

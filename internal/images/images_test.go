@@ -46,7 +46,7 @@ func TestPruneDeletedSourceOutputsRemovesVariantsAndCache(t *testing.T) {
 		},
 	}}
 
-	removedFiles, removedCacheEntries, err := pruneDeletedSourceOutputs(sourceDir, outputDir, previous, cache, false)
+	removedFiles, removedCacheEntries, err := pruneDeletedSourceOutputs(root, sourceDir, outputDir, previous, cache, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestPruneDeletedSourceOutputsIgnoresPathsOutsideConfiguredDirs(t *testing.T
 		},
 	}}
 
-	removedFiles, removedCacheEntries, err := pruneDeletedSourceOutputs(sourceDir, outputDir, previous, &ImageCache{Entries: map[string]CacheEntry{}}, false)
+	removedFiles, removedCacheEntries, err := pruneDeletedSourceOutputs(root, sourceDir, outputDir, previous, &ImageCache{Entries: map[string]CacheEntry{}}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestPruneStaleOutputsRemovesDeletedSourceVariantsAfterFreshManifest(t *test
 		},
 	}}
 
-	removedFiles, removedCacheEntries, err := pruneStaleOutputs(outputDir, manifest, cache, false)
+	removedFiles, removedCacheEntries, err := pruneStaleOutputs(root, outputDir, manifest, cache, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,6 +140,47 @@ func TestPruneStaleOutputsRemovesDeletedSourceVariantsAfterFreshManifest(t *test
 	}
 	if _, err := os.Stat(liveVariant); err != nil {
 		t.Fatalf("live variant removed: %v", err)
+	}
+}
+
+func TestCachedImagePathsStayRelativeToRepoRoot(t *testing.T) {
+	root := t.TempDir()
+	sourcePath := filepath.Join(root, "assets", "src", "images", "photo.png")
+	writeTestFile(t, sourcePath, "source")
+	sourceHash, err := fileShortMD5(sourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outputRecord := filepath.ToSlash(filepath.Join("assets", "embed", "assets", "images", "photo-480x."+sourceHash+".avif"))
+	outputPath := filepath.Join(root, filepath.FromSlash(outputRecord))
+	writeTestFile(t, outputPath, "variant")
+
+	cfg, err := newRunConfig(&Config{
+		SourceDir: "assets/src/images",
+		OutputDir: "assets/embed/assets/images",
+		Formats:   []string{"avif"},
+		Sizes:     []int{480},
+		Quality:   map[string]int{"avif": 60},
+	}, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cache := &ImageCache{Entries: map[string]CacheEntry{
+		outputRecord: {SourceHash: sourceHash, OutputPath: outputRecord, Timestamp: 1},
+	}}
+
+	processed, cached, err := processOneWithCache(sourcePath, cfg, cache, sourceHash, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cached {
+		t.Fatal("expected cached image")
+	}
+	if processed.OriginalPath != "assets/src/images/photo.png" {
+		t.Fatalf("original path = %q", processed.OriginalPath)
+	}
+	if got := processed.Variants["avif"][480]; got != outputRecord {
+		t.Fatalf("variant path = %q, want %q", got, outputRecord)
 	}
 }
 

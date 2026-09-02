@@ -16,7 +16,7 @@
 - Module: `github.com/jasonwillschiu/buildybud`
 - Entry point: `main.go`
 - Config file: `buildybud.toml` (repo root or Go SSR app root)
-- Install: `go install github.com/jasonwillschiu/buildybud@v0.11.0`
+- Install: `go install github.com/jasonwillschiu/buildybud@v0.11.2`
 - Primary target: repos using `go-datastar1` templates and the matching asset layout
 - Taskfile remains the public command layer; buildybud owns reusable Go SSR web asset steps.
 
@@ -27,6 +27,7 @@
 - `buildybud init` also maintains `.env.example`: create it if missing, append missing documented `BB_` env vars, do not duplicate existing keys or legacy unprefixed aliases.
 - `buildybud init --dry-run` writes no files, and `init` only updates `.env.example` when the generated config is inside the target repo.
 - Config paths resolve relative to `buildybud.toml` unless `paths.repo_root` is absolute.
+- New image configs use inline `[images]` fields. `config_path` remains a legacy alternative, both modes cannot be mixed, and `images.output_dir` must stay below `paths.assets_root`.
 - Asset capability sections support `enabled = false`; `doctor` must only require enabled tools and paths. JS discovery disables build/audit without source or copy directories; minification and auditing are separate controls.
 - CSS `single` mode remains backward compatible. CSS `bundles` mode compiles and audits every named entry before one atomic manifest publish; failed builds must leave the shipped manifest unchanged.
 - `buildybud init` seeds JS dependency defaults for `selectbox`, `datepicker`, and `timepicker` with `input` + `popover`, and `tagsinput` with `popover`.

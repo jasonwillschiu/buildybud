@@ -18,7 +18,18 @@ const variantHashLength = 8
 
 type Options struct {
 	ConfigPath string
+	Config     *Config
+	RepoRoot   string
 	Verbose    bool
+}
+
+type runConfig struct {
+	repoRoot  string
+	sourceDir string
+	outputDir string
+	formats   []string
+	sizes     []int
+	quality   map[string]int
 }
 
 type vipsOutput struct {
@@ -43,15 +54,23 @@ func Run(opts Options) error {
 		return fmt.Errorf("vips CLI not found in PATH. Please install libvips-tools / vips")
 	}
 
-	cfg, err := LoadConfig(opts.ConfigPath)
+	cfg := opts.Config
+	if cfg == nil {
+		loaded, err := LoadConfig(opts.ConfigPath)
+		if err != nil {
+			return fmt.Errorf("failed to load config: %w", err)
+		}
+		cfg = loaded
+	}
+	resolved, err := newRunConfig(cfg, opts.RepoRoot)
 	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
+		return fmt.Errorf("failed to resolve config: %w", err)
 	}
 	if opts.Verbose {
 		fmt.Printf("Loaded config: %#v\n", *cfg)
 	}
 
-	files, err := findImageFiles(cfg.SourceDir)
+	files, err := findImageFiles(resolved.sourceDir)
 	if err != nil {
 		return fmt.Errorf("failed to enumerate images: %w", err)
 	}
@@ -60,20 +79,20 @@ func Run(opts Options) error {
 	}
 	sort.Strings(files)
 
-	if err := os.MkdirAll(cfg.OutputDir, 0o755); err != nil {
+	if err := os.MkdirAll(resolved.outputDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create output dir: %w", err)
 	}
 	manifest := NewImageManifest()
-	manifestPath := filepath.Join(cfg.OutputDir, "manifest.json")
+	manifestPath := filepath.Join(resolved.outputDir, "manifest.json")
 
-	cachePath := filepath.Join(cfg.OutputDir, "cache.json")
+	cachePath := filepath.Join(resolved.outputDir, "cache.json")
 	cache := loadImageCache(cachePath)
 	previousManifest := loadImageManifest(manifestPath)
 	if opts.Verbose {
 		fmt.Printf("Loaded cache with %d entries\n", len(cache.Entries))
 	}
 
-	deletedSourceFiles, deletedSourceCacheEntries, err := pruneDeletedSourceOutputs(cfg.SourceDir, cfg.OutputDir, previousManifest, cache, opts.Verbose)
+	deletedSourceFiles, deletedSourceCacheEntries, err := pruneDeletedSourceOutputs(resolved.repoRoot, resolved.sourceDir, resolved.outputDir, previousManifest, cache, opts.Verbose)
 	if err != nil {
 		return fmt.Errorf("failed to prune deleted source image outputs: %w", err)
 	}
@@ -86,7 +105,7 @@ func Run(opts Options) error {
 			failedCount++
 			continue
 		}
-		proc, cached, err := processOneWithCache(file, cfg, cache, sourceHash, opts.Verbose)
+		proc, cached, err := processOneWithCache(file, resolved, cache, sourceHash, opts.Verbose)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error: %s: %v\n", file, err)
 			failedCount++
@@ -100,7 +119,7 @@ func Run(opts Options) error {
 		}
 	}
 
-	removedFiles, removedCacheEntries, err := pruneStaleOutputs(cfg.OutputDir, manifest, cache, opts.Verbose)
+	removedFiles, removedCacheEntries, err := pruneStaleOutputs(resolved.repoRoot, resolved.outputDir, manifest, cache, opts.Verbose)
 	if err != nil {
 		return fmt.Errorf("failed to prune stale image outputs: %w", err)
 	}
@@ -124,7 +143,7 @@ func Run(opts Options) error {
 	return nil
 }
 
-func processOne(src string, cfg *Config, verbose bool) (*ProcessedImage, error) {
+func processOne(src string, cfg *runConfig, verbose bool) (*ProcessedImage, error) {
 	shortHash, err := fileShortMD5(src)
 	if err != nil {
 		return nil, fmt.Errorf("hash: %w", err)
@@ -132,20 +151,20 @@ func processOne(src string, cfg *Config, verbose bool) (*ProcessedImage, error) 
 
 	base := strings.TrimSuffix(filepath.Base(src), filepath.Ext(src))
 	processed := &ProcessedImage{
-		OriginalPath: filepath.ToSlash(src),
+		OriginalPath: cfg.recordPath(src),
 		Variants:     make(map[string]map[int]string),
 		Hash:         shortHash,
 	}
 
 	var outputs []vipsOutput
-	for _, fmtName := range cfg.Formats {
+	for _, fmtName := range cfg.formats {
 		if _, ok := processed.Variants[fmtName]; !ok {
 			processed.Variants[fmtName] = make(map[int]string)
 		}
-		for _, w := range cfg.Sizes {
-			out := filepath.Join(cfg.OutputDir, fmt.Sprintf("%s-%dx.%s.%s", base, w, shortHash, fmtName))
-			outputs = append(outputs, vipsOutput{path: out, width: w, format: fmtName, quality: cfg.Quality[fmtName]})
-			processed.Variants[fmtName][w] = filepath.ToSlash(out)
+		for _, w := range cfg.sizes {
+			out := filepath.Join(cfg.outputDir, fmt.Sprintf("%s-%dx.%s.%s", base, w, shortHash, fmtName))
+			outputs = append(outputs, vipsOutput{path: out, width: w, format: fmtName, quality: cfg.quality[fmtName]})
+			processed.Variants[fmtName][w] = cfg.recordPath(out)
 		}
 	}
 
@@ -314,20 +333,24 @@ func saveImageCache(cache *ImageCache, path string) error {
 	return os.Rename(tmp, path)
 }
 
-func processOneWithCache(src string, cfg *Config, cache *ImageCache, sourceHash string, verbose bool) (*ProcessedImage, bool, error) {
+func processOneWithCache(src string, cfg *runConfig, cache *ImageCache, sourceHash string, verbose bool) (*ProcessedImage, bool, error) {
 	base := strings.TrimSuffix(filepath.Base(src), filepath.Ext(src))
 
-	var expectedPaths []string
-	for _, fmtName := range cfg.Formats {
-		for _, w := range cfg.Sizes {
-			outPath := filepath.Join(cfg.OutputDir, fmt.Sprintf("%s-%dx.%s.%s", base, w, sourceHash, fmtName))
-			expectedPaths = append(expectedPaths, filepath.ToSlash(outPath))
+	type expectedPath struct {
+		record string
+		disk   string
+	}
+	var expectedPaths []expectedPath
+	for _, fmtName := range cfg.formats {
+		for _, w := range cfg.sizes {
+			diskPath := filepath.Join(cfg.outputDir, fmt.Sprintf("%s-%dx.%s.%s", base, w, sourceHash, fmtName))
+			expectedPaths = append(expectedPaths, expectedPath{record: cfg.recordPath(diskPath), disk: diskPath})
 		}
 	}
 
 	allCachedAndValid := true
 	for _, outPath := range expectedPaths {
-		entry, exists := cache.Entries[outPath]
+		entry, exists := cache.Entries[outPath.record]
 		if !exists {
 			allCachedAndValid = false
 			break
@@ -338,19 +361,19 @@ func processOneWithCache(src string, cfg *Config, cache *ImageCache, sourceHash 
 				break
 			}
 		}
-		if _, err := os.Stat(outPath); err != nil {
+		if _, err := os.Stat(outPath.disk); err != nil {
 			allCachedAndValid = false
 			break
 		}
 	}
 
 	if allCachedAndValid {
-		processed := &ProcessedImage{OriginalPath: filepath.ToSlash(src), Variants: make(map[string]map[int]string), Hash: sourceHash}
-		for _, fmtName := range cfg.Formats {
+		processed := &ProcessedImage{OriginalPath: cfg.recordPath(src), Variants: make(map[string]map[int]string), Hash: sourceHash}
+		for _, fmtName := range cfg.formats {
 			processed.Variants[fmtName] = make(map[int]string)
-			for _, w := range cfg.Sizes {
-				outPath := filepath.Join(cfg.OutputDir, fmt.Sprintf("%s-%dx.%s.%s", base, w, sourceHash, fmtName))
-				processed.Variants[fmtName][w] = filepath.ToSlash(outPath)
+			for _, w := range cfg.sizes {
+				outPath := filepath.Join(cfg.outputDir, fmt.Sprintf("%s-%dx.%s.%s", base, w, sourceHash, fmtName))
+				processed.Variants[fmtName][w] = cfg.recordPath(outPath)
 			}
 		}
 		if verbose {
@@ -372,7 +395,7 @@ func processOneWithCache(src string, cfg *Config, cache *ImageCache, sourceHash 
 	return processed, false, nil
 }
 
-func pruneDeletedSourceOutputs(sourceDir, outputDir string, previous *ImageManifest, cache *ImageCache, verbose bool) (int, int, error) {
+func pruneDeletedSourceOutputs(repoRoot, sourceDir, outputDir string, previous *ImageManifest, cache *ImageCache, verbose bool) (int, int, error) {
 	if previous == nil || len(previous.Images) == 0 {
 		return 0, 0, nil
 	}
@@ -383,7 +406,7 @@ func pruneDeletedSourceOutputs(sourceDir, outputDir string, previous *ImageManif
 		if processed == nil || strings.TrimSpace(processed.OriginalPath) == "" {
 			continue
 		}
-		sourcePath := filepath.Clean(processed.OriginalPath)
+		sourcePath := resolveRecordPath(repoRoot, processed.OriginalPath)
 		if !isPathUnder(sourcePath, sourceDir) {
 			continue
 		}
@@ -393,8 +416,8 @@ func pruneDeletedSourceOutputs(sourceDir, outputDir string, previous *ImageManif
 			return 0, 0, fmt.Errorf("stat source image %s: %w", filepath.ToSlash(sourcePath), err)
 		}
 
-		for _, outputPath := range processed.VariantPaths() {
-			outputPath = filepath.Clean(outputPath)
+		for _, outputRecord := range processed.VariantPaths() {
+			outputPath := resolveRecordPath(repoRoot, outputRecord)
 			if !isPathUnder(outputPath, outputDir) {
 				continue
 			}
@@ -406,20 +429,24 @@ func pruneDeletedSourceOutputs(sourceDir, outputDir string, previous *ImageManif
 			} else if !os.IsNotExist(err) {
 				return 0, 0, fmt.Errorf("remove deleted-source image output %s: %w", filepath.ToSlash(outputPath), err)
 			}
-			removedCacheEntries += deleteCacheEntry(cache, outputPath, verbose)
+			removed := deleteCacheEntry(cache, outputRecord, outputPath)
+			removedCacheEntries += removed
+			if verbose && removed > 0 {
+				fmt.Printf("Removed stale cache entry: %s\n", filepath.ToSlash(outputRecord))
+			}
 		}
 	}
 	return removedFiles, removedCacheEntries, nil
 }
 
-func pruneStaleOutputs(outputDir string, manifest *ImageManifest, cache *ImageCache, verbose bool) (int, int, error) {
+func pruneStaleOutputs(repoRoot, outputDir string, manifest *ImageManifest, cache *ImageCache, verbose bool) (int, int, error) {
 	keep := make(map[string]struct{})
 	for _, processed := range manifest.Images {
 		if processed == nil {
 			continue
 		}
 		for _, outputPath := range processed.VariantPaths() {
-			keep[filepath.ToSlash(outputPath)] = struct{}{}
+			keep[filepath.ToSlash(resolveRecordPath(repoRoot, outputPath))] = struct{}{}
 		}
 	}
 
@@ -459,7 +486,7 @@ func pruneStaleOutputs(outputDir string, manifest *ImageManifest, cache *ImageCa
 
 	removedCacheEntries := 0
 	for outputPath := range cache.Entries {
-		normalized := filepath.ToSlash(outputPath)
+		normalized := filepath.ToSlash(resolveRecordPath(repoRoot, outputPath))
 		if _, ok := keep[normalized]; !ok {
 			delete(cache.Entries, outputPath)
 			removedCacheEntries++
@@ -472,22 +499,65 @@ func pruneStaleOutputs(outputDir string, manifest *ImageManifest, cache *ImageCa
 	return removedFiles, removedCacheEntries, nil
 }
 
-func deleteCacheEntry(cache *ImageCache, outputPath string, verbose bool) int {
+func deleteCacheEntry(cache *ImageCache, paths ...string) int {
 	if cache == nil || cache.Entries == nil {
 		return 0
 	}
 	removed := 0
-	for _, key := range []string{filepath.ToSlash(outputPath), outputPath} {
-		if _, ok := cache.Entries[key]; !ok {
-			continue
-		}
-		delete(cache.Entries, key)
-		removed++
-		if verbose {
-			fmt.Printf("Removed stale cache entry: %s\n", filepath.ToSlash(key))
+	for _, path := range paths {
+		for _, key := range []string{filepath.ToSlash(path), path} {
+			if _, ok := cache.Entries[key]; !ok {
+				continue
+			}
+			delete(cache.Entries, key)
+			removed++
 		}
 	}
 	return removed
+}
+
+func newRunConfig(cfg *Config, repoRoot string) (*runConfig, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("config is required")
+	}
+	if repoRoot == "" {
+		repoRoot = "."
+	}
+	absRoot, err := filepath.Abs(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	return &runConfig{
+		repoRoot:  absRoot,
+		sourceDir: resolveRecordPath(absRoot, cfg.SourceDir),
+		outputDir: resolveRecordPath(absRoot, cfg.OutputDir),
+		formats:   append([]string(nil), cfg.Formats...),
+		sizes:     append([]int(nil), cfg.Sizes...),
+		quality:   cloneQuality(cfg.Quality),
+	}, nil
+}
+
+func (c *runConfig) recordPath(path string) string {
+	rel, err := filepath.Rel(c.repoRoot, path)
+	if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return filepath.ToSlash(rel)
+	}
+	return filepath.ToSlash(filepath.Clean(path))
+}
+
+func resolveRecordPath(repoRoot, path string) string {
+	if filepath.IsAbs(path) || repoRoot == "" {
+		return filepath.Clean(path)
+	}
+	return filepath.Clean(filepath.Join(repoRoot, filepath.FromSlash(path)))
+}
+
+func cloneQuality(quality map[string]int) map[string]int {
+	cloned := make(map[string]int, len(quality))
+	for format, value := range quality {
+		cloned[format] = value
+	}
+	return cloned
 }
 
 func isPathUnder(path, dir string) bool {

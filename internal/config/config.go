@@ -117,8 +117,13 @@ type OGConfig struct {
 }
 
 type ImagesConfig struct {
-	Enabled    bool   `toml:"enabled"`
-	ConfigPath string `toml:"config_path"`
+	Enabled    bool           `toml:"enabled"`
+	ConfigPath string         `toml:"config_path"`
+	SourceDir  string         `toml:"source_dir"`
+	OutputDir  string         `toml:"output_dir"`
+	Formats    []string       `toml:"formats"`
+	Sizes      []int          `toml:"sizes"`
+	Quality    map[string]int `toml:"quality"`
 }
 
 type FaviconConfig struct {
@@ -215,7 +220,7 @@ func Default() *Config {
 			RawBlogImageDir: "assets/src/raw-images/blog",
 			BlogManifest:    "assets/src/images/blog/generated-manifest.json",
 		},
-		Images: ImagesConfig{Enabled: true, ConfigPath: "tools/imageopt/config.json"},
+		Images: ImagesConfig{Enabled: true},
 		Favicon: FaviconConfig{
 			Enabled:   true,
 			SourceDir: "assets/src/favicon",
@@ -400,8 +405,55 @@ func (c *Config) Validate() error {
 			return errors.New("favicon.out_dir is required when favicon.enabled is true")
 		}
 	}
-	if c.Images.Enabled && c.Images.ConfigPath == "" {
-		return errors.New("images.config_path is required when images.enabled is true")
+	if c.Images.Enabled {
+		if c.Images.ConfigPath != "" && c.Images.hasInlineValues() {
+			return errors.New("images.config_path cannot be combined with inline image settings")
+		}
+		if c.Images.ConfigPath == "" {
+			c.Images.applyDefaults(c.Paths.AssetsRoot)
+			if strings.TrimSpace(c.Images.SourceDir) == "" {
+				return errors.New("images.source_dir is required when images.enabled is true")
+			}
+			if strings.TrimSpace(c.Images.OutputDir) == "" {
+				return errors.New("images.output_dir is required when images.enabled is true")
+			}
+			if len(c.Images.Formats) == 0 {
+				return errors.New("images.formats is required when images.enabled is true")
+			}
+			seenFormats := map[string]bool{}
+			for i, format := range c.Images.Formats {
+				format = strings.ToLower(strings.TrimSpace(format))
+				if format == "" {
+					return errors.New("images.formats entries cannot be empty")
+				}
+				if seenFormats[format] {
+					return fmt.Errorf("duplicate images format: %s", format)
+				}
+				seenFormats[format] = true
+				c.Images.Formats[i] = format
+			}
+			if len(c.Images.Sizes) == 0 {
+				return errors.New("images.sizes is required when images.enabled is true")
+			}
+			lastSize := 0
+			for _, size := range c.Images.Sizes {
+				if size <= lastSize {
+					return errors.New("images.sizes must contain unique positive widths in ascending order")
+				}
+				lastSize = size
+			}
+			for format, quality := range c.Images.Quality {
+				if quality < 1 || quality > 100 {
+					return fmt.Errorf("images.quality.%s must be 1..100", format)
+				}
+			}
+			assetsRoot := filepath.Clean(c.RepoPath(c.Paths.AssetsRoot))
+			outputDir := filepath.Clean(c.RepoPath(c.Images.OutputDir))
+			rel, err := filepath.Rel(assetsRoot, outputDir)
+			if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				return errors.New("images.output_dir must be a child of paths.assets_root")
+			}
+		}
 	}
 	if c.OG.Enabled {
 		if c.OG.SiteURL == "" {
@@ -513,7 +565,10 @@ func Discover(repoRoot string) (*Config, error) {
 	cfg.JS.Audit.Enabled = cfg.JS.Enabled
 	cfg.JS.Audit.InlineDirs = append([]string(nil), cfg.JS.ScanTemplateDirs...)
 	cfg.JS.TempluiComponentDir = firstOrDefault(cfg.JS.CopyDirs, cfg.JS.TempluiComponentDir)
-	cfg.Images.ConfigPath = detectExisting(root, "assets/src/images/imageopt.config.json", "tools/imageopt/config.json", "imageopt/config.json")
+	cfg.Images.ConfigPath = firstExisting(root, "assets/src/images/imageopt.config.json", "tools/imageopt/config.json", "imageopt/config.json")
+	if cfg.Images.ConfigPath == "" {
+		cfg.Images.applyDefaults(cfg.Paths.AssetsRoot)
+	}
 	cfg.OG.RoutesFile = detectExisting(root, "content/seo/routes.toml")
 	cfg.OG.BlogDir = detectExisting(root, "content/blog")
 	cfg.Favicon.SourceDir = detectExisting(root, "assets/src/favicon")
@@ -543,6 +598,25 @@ func (c *Config) MarshalTOML() []byte {
 			quoted = append(quoted, fmt.Sprintf("%q", filepath.ToSlash(value)))
 		}
 		fmt.Fprintf(&buf, "%s = [%s]\n", key, strings.Join(quoted, ", "))
+	}
+	writeIntList := func(key string, values []int) {
+		parts := make([]string, 0, len(values))
+		for _, value := range values {
+			parts = append(parts, fmt.Sprintf("%d", value))
+		}
+		fmt.Fprintf(&buf, "%s = [%s]\n", key, strings.Join(parts, ", "))
+	}
+	writeIntMap := func(key string, values map[string]int) {
+		names := make([]string, 0, len(values))
+		for name := range values {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		parts := make([]string, 0, len(names))
+		for _, name := range names {
+			parts = append(parts, fmt.Sprintf("%s = %d", name, values[name]))
+		}
+		fmt.Fprintf(&buf, "%s = { %s }\n", key, strings.Join(parts, ", "))
 	}
 
 	writeInt("schema_version", c.SchemaVersion)
@@ -633,7 +707,15 @@ func (c *Config) MarshalTOML() []byte {
 
 	buf.WriteString("\n[images]\n")
 	writeBool("enabled", c.Images.Enabled)
-	writeKV("config_path", filepath.ToSlash(c.Images.ConfigPath))
+	if c.Images.ConfigPath != "" {
+		writeKV("config_path", filepath.ToSlash(c.Images.ConfigPath))
+	} else {
+		writeKV("source_dir", filepath.ToSlash(c.Images.SourceDir))
+		writeKV("output_dir", filepath.ToSlash(c.Images.OutputDir))
+		writeList("formats", c.Images.Formats)
+		writeIntList("sizes", c.Images.Sizes)
+		writeIntMap("quality", c.Images.Quality)
+	}
 
 	buf.WriteString("\n[favicon]\n")
 	writeBool("enabled", c.Favicon.Enabled)
@@ -691,6 +773,40 @@ func detectExisting(repoRoot string, candidates ...string) string {
 		return ""
 	}
 	return candidates[0]
+}
+
+func firstExisting(repoRoot string, candidates ...string) string {
+	for _, candidate := range candidates {
+		if candidate == "" {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(repoRoot, filepath.FromSlash(candidate))); err == nil {
+			return candidate
+		}
+	}
+	return ""
+}
+
+func (c *ImagesConfig) hasInlineValues() bool {
+	return c.SourceDir != "" || c.OutputDir != "" || len(c.Formats) > 0 || len(c.Sizes) > 0 || len(c.Quality) > 0
+}
+
+func (c *ImagesConfig) applyDefaults(assetsRoot string) {
+	if c.SourceDir == "" {
+		c.SourceDir = "assets/src/images"
+	}
+	if c.OutputDir == "" {
+		c.OutputDir = filepath.ToSlash(filepath.Join(assetsRoot, "images"))
+	}
+	if len(c.Formats) == 0 {
+		c.Formats = []string{"jpeg", "avif"}
+	}
+	if len(c.Sizes) == 0 {
+		c.Sizes = []int{480, 768, 1200}
+	}
+	if c.Quality == nil {
+		c.Quality = map[string]int{"jpeg": 80, "avif": 60}
+	}
 }
 
 func existingDirs(repoRoot string, candidates ...string) []string {

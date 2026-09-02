@@ -457,10 +457,34 @@ func runImagesWithConfig(cfg *config.Config, verbose bool) error {
 		return nil
 	}
 
+	imageConfig := &images.Config{
+		SourceDir: cfg.Images.SourceDir,
+		OutputDir: cfg.Images.OutputDir,
+		Formats:   append([]string(nil), cfg.Images.Formats...),
+		Sizes:     append([]int(nil), cfg.Images.Sizes...),
+		Quality:   cloneIntMap(cfg.Images.Quality),
+	}
+	if cfg.Images.ConfigPath != "" {
+		loaded, err := images.LoadConfig(cfg.RepoPath(cfg.Images.ConfigPath))
+		if err != nil {
+			return fmt.Errorf("failed to load images config: %w", err)
+		}
+		imageConfig = loaded
+	}
+
 	return images.Run(images.Options{
-		ConfigPath: cfg.RepoPath(cfg.Images.ConfigPath),
-		Verbose:    verbose,
+		Config:   imageConfig,
+		RepoRoot: cfg.RepoPath("."),
+		Verbose:  verbose,
 	})
+}
+
+func cloneIntMap(values map[string]int) map[string]int {
+	cloned := make(map[string]int, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func runOG(args []string, stderr io.Writer) error {

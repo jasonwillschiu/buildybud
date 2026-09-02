@@ -70,6 +70,96 @@ manifest_path = "assets/embed/assets/manifest.json"
 	}
 }
 
+func TestLoadSupportsInlineImageConfig(t *testing.T) {
+	tmp := t.TempDir()
+	cfgPath := filepath.Join(tmp, "buildybud.toml")
+	content := `
+schema_version = 1
+strict = true
+
+[paths]
+repo_root = "."
+assets_root = "public/assets"
+manifest_path = "public/assets/manifest.json"
+
+[images]
+enabled = true
+source_dir = "content/images"
+output_dir = "public/assets/images"
+formats = ["jpeg", "avif"]
+sizes = [480, 768, 1200]
+quality = { jpeg = 80, avif = 60 }
+`
+	if err := os.WriteFile(cfgPath, []byte(strings.TrimSpace(content)+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Images.ConfigPath != "" || cfg.Images.SourceDir != "content/images" || cfg.Images.Sizes[0] != 480 {
+		t.Fatalf("images config = %#v", cfg.Images)
+	}
+	if cfg.Images.Quality["avif"] != 60 {
+		t.Fatalf("images quality = %#v", cfg.Images.Quality)
+	}
+}
+
+func TestLoadRejectsMixedImageConfigModes(t *testing.T) {
+	tmp := t.TempDir()
+	cfgPath := filepath.Join(tmp, "buildybud.toml")
+	content := `
+schema_version = 1
+strict = true
+
+[paths]
+repo_root = "."
+assets_root = "assets"
+manifest_path = "assets/manifest.json"
+
+[images]
+enabled = true
+config_path = "imageopt.json"
+sizes = [480, 768]
+`
+	if err := os.WriteFile(cfgPath, []byte(strings.TrimSpace(content)+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(cfgPath)
+	if err == nil || !strings.Contains(err.Error(), "cannot be combined") {
+		t.Fatalf("expected mixed image mode error, got %v", err)
+	}
+}
+
+func TestLoadRejectsUnsafeInlineImageOutput(t *testing.T) {
+	tmp := t.TempDir()
+	cfgPath := filepath.Join(tmp, "buildybud.toml")
+	content := `
+schema_version = 1
+strict = true
+
+[paths]
+repo_root = "."
+assets_root = "assets"
+manifest_path = "assets/manifest.json"
+
+[images]
+enabled = true
+source_dir = "images"
+output_dir = "."
+`
+	if err := os.WriteFile(cfgPath, []byte(strings.TrimSpace(content)+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(cfgPath)
+	if err == nil || !strings.Contains(err.Error(), "must be a child") {
+		t.Fatalf("expected unsafe output error, got %v", err)
+	}
+}
+
 func TestInitGeneratesConfigFromRepoShape(t *testing.T) {
 	tmp := t.TempDir()
 	dirs := []string{
@@ -116,10 +206,44 @@ func TestInitGeneratesConfigFromRepoShape(t *testing.T) {
 		`inline_dirs = ["ui", "feature"]`,
 		`prefix = "/blog"`,
 		`prefix = "/projects"`,
+		`config_path = "tools/imageopt/config.json"`,
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("generated config missing %q:\n%s", want, text)
 		}
+	}
+}
+
+func TestInitGeneratesInlineImageConfigWithoutLegacyJSON(t *testing.T) {
+	tmp := t.TempDir()
+	for _, dir := range []string{"assets/embed/assets", "assets/src/images"} {
+		if err := os.MkdirAll(filepath.Join(tmp, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cfgPath := filepath.Join(tmp, "buildybud.toml")
+	if err := Init(tmp, cfgPath, false); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	for _, want := range []string{
+		`source_dir = "assets/src/images"`,
+		`output_dir = "assets/embed/assets/images"`,
+		`formats = ["jpeg", "avif"]`,
+		`sizes = [480, 768, 1200]`,
+		`quality = { avif = 60, jpeg = 80 }`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("generated config missing %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "config_path") {
+		t.Fatalf("generated inline config contains config_path:\n%s", text)
 	}
 }
 

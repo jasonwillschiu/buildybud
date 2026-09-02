@@ -6,7 +6,7 @@ It is specifically built for repos using `go-datastar1` templates and the surrou
 ## Install
 
 ```bash
-	go install github.com/jasonwillschiu/buildybud@v0.11.2
+	go install github.com/jasonwillschiu/buildybud@v0.12.0
 ```
 
 ## Set Up In A Repo
@@ -61,6 +61,22 @@ Override config path with `--config` on all subcommands.
 Paths in the config are resolved relative to the directory containing `buildybud.toml` unless `paths.repo_root` is absolute. This allows a root Taskfile to call `buildybud --config apps/web/buildybud.toml assets` without first changing directories.
 
 The asset capability sections support `enabled = false` for repos that do not use a step. `doctor` only checks tools and paths for enabled capabilities.
+
+Image optimization can live directly in `buildybud.toml`:
+
+```toml
+[images]
+enabled = true
+source_dir = "assets/src/images"
+output_dir = "assets/embed/assets/images"
+formats = ["jpeg", "avif"]
+sizes = [480, 768, 1200]
+quality = { jpeg = 80, avif = 60 }
+```
+
+Inline image paths resolve from the app root selected by `paths.repo_root`. `output_dir` must be a child of `paths.assets_root` because the image stage removes stale files it owns. Widths must be unique positive values in ascending order, and quality values must be between 1 and 100.
+
+Existing repositories may keep `config_path = "tools/imageopt/config.json"` while migrating. Do not combine `config_path` with inline image fields in the same configuration. New `buildybud init` output uses inline fields unless it discovers an existing imageopt JSON file.
 
 `buildybud css` supports the backward-compatible `single` mode and a `bundles` mode for explicit named entry points. Use `command = "native"` to copy or minify plain CSS with Buildybud's built-in processor and no external CLI. Other command values invoke an external compiler with Tailwind-compatible flags. Bundle mode compiles every entry into a staging directory, audits the staged output, and publishes all fingerprints behind one atomic manifest update. If any compile or audit fails, the current manifest and shipped CSS remain unchanged. `buildybud css audit` checks the currently published bundle files without rebuilding them.
 
