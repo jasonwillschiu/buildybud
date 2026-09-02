@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -25,6 +26,7 @@ type Config struct {
 	CSS        CSSConfig        `toml:"css"`
 	JS         JSConfig         `toml:"js"`
 	Manifest   ManifestConfig   `toml:"manifest"`
+	CDN        CDNConfig        `toml:"cdn"`
 	OG         OGConfig         `toml:"og"`
 	Images     ImagesConfig     `toml:"images"`
 	Favicon    FaviconConfig    `toml:"favicon"`
@@ -98,6 +100,23 @@ type JSAuditGroupConfig struct {
 type ManifestConfig struct {
 	HashLength   int  `toml:"hash_length"`
 	CleanupStale bool `toml:"cleanup_stale"`
+}
+
+type CDNConfig struct {
+	Enabled        bool               `toml:"enabled"`
+	BaseURL        string             `toml:"base_url"`
+	Hosts          []string           `toml:"hosts"`
+	StaticPaths    []string           `toml:"static_paths"`
+	TagPrefix      string             `toml:"tag_prefix"`
+	RedirectsFile  string             `toml:"redirects_file"`
+	RedirectsTable string             `toml:"redirects_table"`
+	Content        []CDNContentConfig `toml:"content"`
+}
+
+type CDNContentConfig struct {
+	SourceDir   string `toml:"source_dir"`
+	RoutePrefix string `toml:"route_prefix"`
+	IncludeTags bool   `toml:"include_tags"`
 }
 
 type OGConfig struct {
@@ -205,6 +224,7 @@ func Default() *Config {
 			HashLength:   8,
 			CleanupStale: true,
 		},
+		CDN: CDNConfig{Enabled: false},
 		OG: OGConfig{
 			Enabled:         false,
 			SiteName:        "",
@@ -403,6 +423,94 @@ func (c *Config) Validate() error {
 		}
 		if c.Favicon.OutDir == "" {
 			return errors.New("favicon.out_dir is required when favicon.enabled is true")
+		}
+	}
+	if c.CDN.Enabled {
+		parsedBaseURL, err := url.Parse(strings.TrimSpace(c.CDN.BaseURL))
+		if err != nil || parsedBaseURL.Scheme == "" || parsedBaseURL.Host == "" {
+			return errors.New("cdn.base_url must be an absolute http or https URL")
+		}
+		if parsedBaseURL.Scheme != "http" && parsedBaseURL.Scheme != "https" {
+			return errors.New("cdn.base_url must use http or https")
+		}
+		if parsedBaseURL.User != nil {
+			return errors.New("cdn.base_url must not contain user information")
+		}
+		if (parsedBaseURL.Path != "" && parsedBaseURL.Path != "/") || parsedBaseURL.RawQuery != "" || parsedBaseURL.Fragment != "" {
+			return errors.New("cdn.base_url must not contain a path, query, or fragment")
+		}
+		if len(c.CDN.Hosts) == 0 {
+			return errors.New("cdn.hosts is required when cdn.enabled is true")
+		}
+		seenHosts := map[string]bool{}
+		for i, host := range c.CDN.Hosts {
+			host = strings.ToLower(strings.TrimSpace(host))
+			if host == "" || strings.ContainsAny(host, "/?#") {
+				return fmt.Errorf("invalid cdn host: %q", host)
+			}
+			parsedHost, err := url.Parse("http://" + host)
+			if err != nil || parsedHost.User != nil || parsedHost.Host != host || parsedHost.Hostname() == "" {
+				return fmt.Errorf("invalid cdn host: %q", host)
+			}
+			if seenHosts[host] {
+				return fmt.Errorf("duplicate cdn host: %s", host)
+			}
+			seenHosts[host] = true
+			c.CDN.Hosts[i] = host
+		}
+		if !seenHosts[strings.ToLower(parsedBaseURL.Host)] {
+			return fmt.Errorf("cdn.base_url host %q must be listed in cdn.hosts", parsedBaseURL.Host)
+		}
+		seenPaths := map[string]bool{}
+		for _, path := range c.CDN.StaticPaths {
+			if err := validateCDNPath("cdn.static_paths", path); err != nil {
+				return err
+			}
+			if seenPaths[path] {
+				return fmt.Errorf("duplicate cdn static path: %s", path)
+			}
+			seenPaths[path] = true
+		}
+		if c.CDN.TagPrefix != "" {
+			if err := validateCDNPrefix("cdn.tag_prefix", c.CDN.TagPrefix); err != nil {
+				return err
+			}
+		}
+		if (c.CDN.RedirectsFile == "") != (c.CDN.RedirectsTable == "") {
+			return errors.New("cdn.redirects_file and cdn.redirects_table must be set together")
+		}
+		if c.CDN.RedirectsFile != "" {
+			redirectsFile, err := validateCDNRepoPath("cdn.redirects_file", c.CDN.RedirectsFile)
+			if err != nil {
+				return err
+			}
+			c.CDN.RedirectsFile = redirectsFile
+		}
+		if len(c.CDN.StaticPaths) == 0 && len(c.CDN.Content) == 0 && c.CDN.RedirectsFile == "" {
+			return errors.New("cdn requires at least one static path, content source, or redirects file")
+		}
+		seenSources := map[string]bool{}
+		for i, source := range c.CDN.Content {
+			if strings.TrimSpace(source.SourceDir) == "" {
+				return errors.New("cdn.content.source_dir is required")
+			}
+			sourceDir, err := validateCDNRepoPath("cdn.content.source_dir", source.SourceDir)
+			if err != nil {
+				return err
+			}
+			c.CDN.Content[i].SourceDir = sourceDir
+			if source.RoutePrefix != "" {
+				if err := validateCDNPrefix("cdn.content.route_prefix", source.RoutePrefix); err != nil {
+					return err
+				}
+			}
+			if source.IncludeTags && c.CDN.TagPrefix == "" {
+				return errors.New("cdn.tag_prefix is required when content includes tags")
+			}
+			if seenSources[sourceDir] {
+				return fmt.Errorf("duplicate cdn content source: %s", sourceDir)
+			}
+			seenSources[sourceDir] = true
 		}
 	}
 	if c.Images.Enabled {
@@ -690,6 +798,23 @@ func (c *Config) MarshalTOML() []byte {
 	writeInt("hash_length", c.Manifest.HashLength)
 	writeBool("cleanup_stale", c.Manifest.CleanupStale)
 
+	buf.WriteString("\n[cdn]\n")
+	writeBool("enabled", c.CDN.Enabled)
+	if c.CDN.Enabled {
+		writeKV("base_url", c.CDN.BaseURL)
+		writeList("hosts", c.CDN.Hosts)
+		writeList("static_paths", c.CDN.StaticPaths)
+		writeKV("tag_prefix", c.CDN.TagPrefix)
+		writeKV("redirects_file", filepath.ToSlash(c.CDN.RedirectsFile))
+		writeKV("redirects_table", c.CDN.RedirectsTable)
+		for _, source := range c.CDN.Content {
+			buf.WriteString("\n[[cdn.content]]\n")
+			writeKV("source_dir", filepath.ToSlash(source.SourceDir))
+			writeKV("route_prefix", source.RoutePrefix)
+			writeBool("include_tags", source.IncludeTags)
+		}
+	}
+
 	buf.WriteString("\n[og]\n")
 	writeBool("enabled", c.OG.Enabled)
 	writeKV("site_name", c.OG.SiteName)
@@ -807,6 +932,33 @@ func (c *ImagesConfig) applyDefaults(assetsRoot string) {
 	if c.Quality == nil {
 		c.Quality = map[string]int{"jpeg": 80, "avif": 60}
 	}
+}
+
+func validateCDNPath(field, value string) error {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil || parsed.IsAbs() || !strings.HasPrefix(parsed.Path, "/") || parsed.Fragment != "" {
+		return fmt.Errorf("%s entries must be absolute URL paths without fragments: %q", field, value)
+	}
+	return nil
+}
+
+func validateCDNPrefix(field, value string) error {
+	if err := validateCDNPath(field, value); err != nil {
+		return err
+	}
+	parsed, _ := url.Parse(strings.TrimSpace(value))
+	if parsed.RawQuery != "" {
+		return fmt.Errorf("%s must not contain a query string: %q", field, value)
+	}
+	return nil
+}
+
+func validateCDNRepoPath(field, value string) (string, error) {
+	cleaned := filepath.Clean(strings.TrimSpace(value))
+	if cleaned == "." || filepath.IsAbs(cleaned) || cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("%s must be a repo-relative path: %q", field, value)
+	}
+	return filepath.ToSlash(cleaned), nil
 }
 
 func existingDirs(repoRoot string, candidates ...string) []string {

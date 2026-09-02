@@ -18,11 +18,12 @@
 - Taskfile stays the main command layer; buildybud owns repeatable Go SSR web asset steps.
 - Config paths resolve relative to `buildybud.toml` unless `paths.repo_root` is absolute.
 - Asset capability sections support `enabled = false`; `doctor` must only require enabled tools/paths. JS discovery disables build/audit when no source or copy directory exists; `js.minify` and `js.audit.enabled` remain independent controls.
-- `envOrDefault(keys..., fallback)` - variadic, checked in order, last arg is fallback
-- CDN env vars have two forms: `APP_BASE_URL` and `BB_APP_BASE_URL` (unprefixed checked first)
+- CDN is Cloudflare-only; keep route inventory in typed `[cdn]` TOML and credentials in env.
+- CDN override precedence is flag, `BB_` env name, legacy unprefixed env name, then TOML.
+- Plan the union of all public routes at immutable old and new commit SHAs so deleted and renamed routes are purged.
 - `.env` auto-loaded before command execution
 - `buildybud init --dry-run` writes no files
-- `buildybud init` writes `.env.example` only when config is generated inside the target repo; create if missing, append missing documented `BB_` vars, do not duplicate keys or legacy unprefixed aliases
+- `buildybud init` writes `.env.example` only when config is generated inside the target repo; document only Cloudflare credential vars and remove obsolete managed provider config
 - `buildybud init` seeds JS dependency defaults for `selectbox`, `datepicker`, `timepicker`, and `tagsinput`
 - `buildybud.toml` required at repo/app root; `buildybud init` generates it
 - `assets` macro runs enabled asset steps; keep CI/build orchestration in Taskfile

@@ -5,12 +5,12 @@
 - `task js` now calls `buildybud js`.
 - `task templui-map` now calls `buildybud templui-map generate`.
 - `task images` now calls `buildybud images`.
-- `task cdn-purge-bunny` can now call `buildybud cdn plan-and-purge`.
+- `task cdn-purge-cloudflare` calls `buildybud cdn plan-and-purge` with route inventory read from `buildybud.toml`.
 
 ## Added Files in jasonchiu-com4
 - `buildybud.toml` (single source of truth for build settings)
 
 ## Rollback Plan
-1. Revert `Taskfile.yml` command lines back to `go run ./tools/*` invocations.
-2. Keep `buildybud.toml` in place (safe to leave unused) or remove it.
-3. Continue using existing `tools/*` binaries/scripts until a fixed `buildybud` version is installed.
+1. Pin the previous known-good Buildybud version in deployment and local setup.
+2. Revert the matching `Taskfile.yml` and `buildybud.toml` changes together.
+3. Do not restore deleted local tools unless the previous Buildybud release cannot cover the required operation.

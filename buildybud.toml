@@ -42,6 +42,9 @@ tagsinput = ["popover"]
 hash_length = 8
 cleanup_stale = true
 
+[cdn]
+enabled = false
+
 [og]
 enabled = false
 site_name = ""

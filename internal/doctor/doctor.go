@@ -30,6 +30,18 @@ func Run(cfg *config.Config) error {
 			fn   func() error
 		}{name: "vips", fn: func() error { return checkCommand("vips") }})
 	}
+	if cfg.CDN.Enabled {
+		for _, source := range cfg.CDN.Content {
+			if info, err := os.Stat(cfg.RepoPath(source.SourceDir)); err != nil || !info.IsDir() {
+				return fmt.Errorf("missing cdn content source directory: %s", source.SourceDir)
+			}
+		}
+		if cfg.CDN.RedirectsFile != "" {
+			if _, err := os.Stat(cfg.RepoPath(cfg.CDN.RedirectsFile)); err != nil {
+				return fmt.Errorf("missing cdn redirects file: %s", cfg.CDN.RedirectsFile)
+			}
+		}
+	}
 	if cfg.TempluiMap.Enabled {
 		checks = append(checks, struct {
 			name string

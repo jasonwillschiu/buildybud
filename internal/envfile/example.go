@@ -15,41 +15,24 @@ type exampleVar struct {
 
 var exampleVars = []exampleVar{
 	{
-		Key:           "BB_APP_BASE_URL",
-		LegacyKey:     "APP_BASE_URL",
-		LegacyComment: "Required for CDN planning and for purging relative paths. BB_APP_BASE_URL is also supported.",
-		Comment:       "Required for buildybud CDN planning and for purging relative paths.",
-	},
-	{
-		Key:           "BB_CDN_PROVIDER",
-		LegacyKey:     "CDN_PROVIDER",
-		LegacyComment: "Optional default CDN provider: bunny or cloudflare. BB_CDN_PROVIDER is also supported.",
-		Comment:       "Optional default buildybud CDN provider: bunny or cloudflare.",
-	},
-	{
-		Key:           "BB_CDN_PURGE_HOSTS",
-		LegacyKey:     "CDN_PURGE_HOSTS",
-		LegacyComment: "Optional comma-separated extra hostnames to purge. BB_CDN_PURGE_HOSTS is also supported.",
-		Comment:       "Optional comma-separated extra hostnames for buildybud CDN purges.",
-	},
-	{
-		Key:           "BB_BUNNY_API_KEY",
-		LegacyKey:     "BUNNY_API_KEY",
-		LegacyComment: "Required when CDN_PROVIDER=bunny. BB_BUNNY_API_KEY is also supported.",
-		Comment:       "Required when BB_CDN_PROVIDER=bunny.",
-	},
-	{
 		Key:           "BB_CF_API_TOKEN",
 		LegacyKey:     "CF_API_TOKEN",
 		LegacyComment: "Required when CDN_PROVIDER=cloudflare. BB_CF_API_TOKEN is also supported.",
-		Comment:       "Required when BB_CDN_PROVIDER=cloudflare.",
+		Comment:       "Required for Cloudflare cache purges.",
 	},
 	{
 		Key:           "BB_CF_ZONE_ID",
 		LegacyKey:     "CF_ZONE_ID",
 		LegacyComment: "Required when CDN_PROVIDER=cloudflare. BB_CF_ZONE_ID is also supported.",
-		Comment:       "Required when BB_CDN_PROVIDER=cloudflare.",
+		Comment:       "Required for Cloudflare cache purges.",
 	},
+}
+
+var obsoleteExampleVars = []exampleVar{
+	{Key: "BB_APP_BASE_URL", LegacyKey: "APP_BASE_URL", LegacyComment: "Required for CDN planning and for purging relative paths. BB_APP_BASE_URL is also supported.", Comment: "Required for buildybud CDN planning and for purging relative paths."},
+	{Key: "BB_CDN_PROVIDER", LegacyKey: "CDN_PROVIDER", LegacyComment: "Optional default CDN provider: bunny or cloudflare. BB_CDN_PROVIDER is also supported.", Comment: "Optional default buildybud CDN provider: bunny or cloudflare."},
+	{Key: "BB_CDN_PURGE_HOSTS", LegacyKey: "CDN_PURGE_HOSTS", LegacyComment: "Optional comma-separated extra hostnames to purge. BB_CDN_PURGE_HOSTS is also supported.", Comment: "Optional comma-separated extra hostnames for buildybud CDN purges."},
+	{Key: "BB_BUNNY_API_KEY", LegacyKey: "BUNNY_API_KEY", LegacyComment: "Required when CDN_PROVIDER=bunny. BB_BUNNY_API_KEY is also supported.", Comment: "Required when BB_CDN_PROVIDER=bunny."},
 }
 
 func AppendExample(path string) error {
@@ -117,6 +100,11 @@ func isLegacyManagedComment(line string) bool {
 			return true
 		}
 	}
+	for _, spec := range obsoleteExampleVars {
+		if spec.LegacyComment == line || spec.Comment == line {
+			return true
+		}
+	}
 	return false
 }
 
@@ -131,6 +119,11 @@ func isLegacyManagedKey(line string) bool {
 	key = strings.TrimSpace(key)
 	for _, spec := range exampleVars {
 		if spec.LegacyKey == key {
+			return true
+		}
+	}
+	for _, spec := range obsoleteExampleVars {
+		if spec.Key == key || spec.LegacyKey == key {
 			return true
 		}
 	}

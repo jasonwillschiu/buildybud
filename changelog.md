@@ -1,3 +1,10 @@
+# 0.13.0 - Change: Cloudflare-only CDN ownership
+- Replace Bunny/provider branching with one Cloudflare purge path and remove provider flags and environment settings.
+- Move public route inventory into typed `[cdn]` TOML, including static routes, Markdown content roots, tag routes, and redirects.
+- Plan the union of routes at immutable old and new commit SHAs so deleted, renamed, draft, tag, and redirect changes purge safely.
+- Restrict absolute purge URLs to configured hosts, preserve redirect query strings, batch Cloudflare requests at 100 URLs, and apply a 15-second timeout.
+- Keep only Cloudflare credentials in generated `.env.example` files while retaining legacy unprefixed credential aliases.
+
 # 0.12.0 - Add: Inline image configuration
 - Add inline image source, output, format, width, and quality settings to `buildybud.toml`.
 - Keep legacy JSON configuration available as a mutually exclusive migration path.

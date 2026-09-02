@@ -795,7 +795,7 @@ Commands:
   og                 Generate Open Graph PNG sources
   images             Generate image variants via vips
   favicon            Copy favicon assets into embedded assets
-  cdn                Plan and purge Bunny or Cloudflare CDN URLs
+  cdn                Plan and purge Cloudflare CDN URLs
   templui-map        Manage templui route map (generate|check|suggest)
   doctor             Validate config, paths, and tooling
   version            Print latest changelog semver
@@ -813,6 +813,6 @@ Examples:
   %s js --config ./buildybud.toml
   %s js audit --config ./buildybud.toml
   %s og --config ./buildybud.toml
-  %s cdn purge --provider bunny /blog /projects/demo
+  %s cdn purge /blog /projects/demo
 `, toolName, ToolVersion, toolName, ToolVersion, config.DefaultPath, toolName, toolName, toolName, toolName, toolName, toolName, toolName, toolName)
 }

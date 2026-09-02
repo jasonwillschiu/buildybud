@@ -16,15 +16,16 @@
 - Module: `github.com/jasonwillschiu/buildybud`
 - Entry point: `main.go`
 - Config file: `buildybud.toml` (repo root or Go SSR app root)
-- Install: `go install github.com/jasonwillschiu/buildybud@v0.11.2`
+- Install: `go install github.com/jasonwillschiu/buildybud@v0.12.0`
 - Primary target: repos using `go-datastar1` templates and the matching asset layout
 - Taskfile remains the public command layer; buildybud owns reusable Go SSR web asset steps.
 
 ## Hard Invariants
-- `envOrDefault` accepts variadic keys: checked in order, last arg is the fallback value.
-- CDN env vars support two forms: unprefixed (`APP_BASE_URL`) and `BB_`-prefixed (`BB_APP_BASE_URL`). Unprefixed is checked first.
+- CDN is Cloudflare-only. Route inventory belongs in typed `[cdn]` TOML; only API credentials belong in `.env.example`.
+- CDN override precedence is flag, then `BB_` env name, then legacy unprefixed env name, then TOML.
+- CDN planning uses the union of all public routes at immutable old and new commit SHAs so deletions and renames remain purgeable.
 - `.env` file is auto-loaded before command execution.
-- `buildybud init` also maintains `.env.example`: create it if missing, append missing documented `BB_` env vars, do not duplicate existing keys or legacy unprefixed aliases.
+- `buildybud init` also maintains `.env.example`: create it if missing, append missing Cloudflare credential vars, remove obsolete managed provider config, and do not duplicate existing keys or legacy unprefixed aliases.
 - `buildybud init --dry-run` writes no files, and `init` only updates `.env.example` when the generated config is inside the target repo.
 - Config paths resolve relative to `buildybud.toml` unless `paths.repo_root` is absolute.
 - New image configs use inline `[images]` fields. `config_path` remains a legacy alternative, both modes cannot be mixed, and `images.output_dir` must stay below `paths.assets_root`.
@@ -39,7 +40,7 @@
 ```
 main.go                     CLI entry point
 internal/app/               Root command, help, init, doctor, version
-internal/cdn/               CDN plan/purge logic (Bunny + Cloudflare)
+internal/cdn/               Cloudflare route planning and purge logic
 internal/config/            TOML config parsing + validation
 internal/css/               Native/external CSS processing and bundle size audits
 internal/envfile/           .env loader + .env.example writer

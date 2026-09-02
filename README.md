@@ -19,7 +19,7 @@ It is specifically built for repos using `go-datastar1` templates and the surrou
 6. Start replacing local build steps with `buildybud assets`, or with individual commands such as `buildybud css`, `buildybud js`, `buildybud og`, `buildybud images`, `buildybud favicon`, and `buildybud templui-map generate`.
 
 `buildybud init` scans the repo for common directories such as `assets/embed/assets`, `assets/src/css/input.css`, `assets/src/js`, `assets/src/templui/assets/js`, `assets/src/favicon`, `ui`, `feature`, `core/router/router.go`, `assets/src/images/imageopt.config.json`, and `tools/imageopt/config.json`, then writes a starter `buildybud.toml`.
-It also creates `.env.example` when the generated config is written inside the target repo, and appends any missing CDN-related env vars with comments so repo setup documents the required `.env` shape.
+It also creates `.env.example` when the generated config is written inside the target repo, and appends the Cloudflare credential variables used by CDN purges.
 The generated JS dependency defaults include `sheet -> dialog`, `dropdown -> popover`, `selectbox -> input + popover`, `datepicker -> input + popover`, `timepicker -> input + popover`, and `tagsinput -> popover`.
 
 Use `buildybud init --force` to overwrite an existing config, or `buildybud init --dry-run` to preview generated TOML without writing files. The `.env.example` update is additive: missing documented `BB_` keys are appended to the end, and existing keys are left in place. Use `--config` on subcommands if the file lives elsewhere; relative config paths now resolve repo paths from the config file's directory, so monorepo app configs can live under paths such as `apps/web/buildybud.toml`.
@@ -187,25 +187,43 @@ The OG card rendering pipeline composes these layers:
 
 ## CDN
 
-`buildybud cdn` supports Bunny and Cloudflare purges.
+`buildybud cdn` plans and executes Cloudflare cache purges from a typed route inventory in `buildybud.toml`.
 
-- `plan` computes purge paths and URLs from git diffs.
+- `plan` resolves both Git refs to commit SHAs and returns the union of every public route at both revisions. Including the old revision ensures deleted and renamed routes are purged.
 - `purge` purges explicit paths or absolute URLs.
 - `plan-and-purge` computes and executes the purge in one step.
-- Use `--provider bunny|cloudflare` or `CDN_PROVIDER` to choose the purge backend.
+
+```toml
+[cdn]
+enabled = true
+base_url = "https://example.com"
+hosts = ["example.com", "www.example.com"]
+static_paths = ["/", "/about", "/blog", "/projects", "/tags", "/sitemap.xml", "/robots.txt"]
+tag_prefix = "/tags"
+redirects_file = "AppConstants.toml"
+redirects_table = "redirects"
+
+[[cdn.content]]
+source_dir = "content/blog"
+route_prefix = "/blog"
+include_tags = true
+
+[[cdn.content]]
+source_dir = "content/projects"
+route_prefix = "/projects"
+include_tags = true
+```
+
+The planner reads Markdown `slug`, `tags`, and `draft` front matter plus the configured TOML redirects table at each commit. Draft content is excluded. Redirect targets retain query strings. Relative purge arguments expand across every configured host; absolute URLs are rejected unless their host appears in `cdn.hosts`.
 
 Environment variables:
 
-- `BB_APP_BASE_URL` or `APP_BASE_URL`
-- `BB_CDN_PROVIDER` or `CDN_PROVIDER` (optional; defaults to `bunny`)
-- `BB_CDN_PURGE_HOSTS` or `CDN_PURGE_HOSTS` (optional comma-separated hostnames)
-- `BB_BUNNY_API_KEY` or `BUNNY_API_KEY` (required for Bunny)
 - `BB_CF_API_TOKEN` or `CF_API_TOKEN` (required for Cloudflare)
 - `BB_CF_ZONE_ID` or `CF_ZONE_ID` (required for Cloudflare)
 
-`buildybud` auto-loads a local `.env` file before command execution. The `BB_` names are the preferred repo-local form so CDN-related variables are clearly scoped; the unprefixed names remain supported for compatibility. If a required CDN variable is missing, the error tells you which env var or flag to set.
+`buildybud` auto-loads a local `.env` file before command execution. The `BB_` names are preferred; unprefixed credential names remain supported for compatibility. Non-secret `base_url` and `hosts` values belong in TOML, with `BB_APP_BASE_URL`/`APP_BASE_URL` and `BB_CDN_PURGE_HOSTS`/`CDN_PURGE_HOSTS` available only as runtime overrides. Flags take precedence over env overrides, which take precedence over TOML.
 
-When `buildybud init` writes config inside the target repo, these variables are documented into `.env.example` with comments using the `BB_` names so it is explicit they belong to `buildybud`. If the file already exists, only missing keys are appended.
+When `buildybud init` writes config inside the target repo, it documents only the two secret Cloudflare values in `.env.example`. Purges are sent in batches of 100 URLs with a 15-second HTTP timeout. `--dry-run` prints the planned URLs without requiring credentials or making network calls.
 
 ## Taskfile wiring target
 
@@ -218,7 +236,7 @@ Use these task mappings in `jasonchiu-com4`:
 - `task images` -> `buildybud images`
 - `task favicon` -> `buildybud favicon`
 - `task templui-map` -> `buildybud templui-map generate`
-- `task cdn-purge-bunny` -> `buildybud cdn plan-and-purge ...`
+- `task cdn-purge-cloudflare` -> `buildybud cdn plan-and-purge ...`
 - Standalone manifest post-step -> `buildybud manifest --input ... --logical ...`
 - `task release` -> `mdrelease` (publish a new version to GitHub)
 

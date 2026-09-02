@@ -106,6 +106,80 @@ quality = { jpeg = 80, avif = 60 }
 	}
 }
 
+func TestLoadSupportsCloudflareCDNConfig(t *testing.T) {
+	tmp := t.TempDir()
+	cfgPath := filepath.Join(tmp, "buildybud.toml")
+	content := `
+schema_version = 1
+strict = true
+
+[paths]
+repo_root = "."
+assets_root = "assets"
+manifest_path = "assets/manifest.json"
+
+[cdn]
+enabled = true
+base_url = "https://example.com"
+hosts = ["example.com", "www.example.com"]
+static_paths = ["/", "/about", "/search?q=go"]
+tag_prefix = "/tags"
+redirects_file = "AppConstants.toml"
+redirects_table = "redirects"
+
+[[cdn.content]]
+source_dir = "content/blog"
+route_prefix = "/blog"
+include_tags = true
+`
+	if err := os.WriteFile(cfgPath, []byte(strings.TrimSpace(content)+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.CDN.Enabled || cfg.CDN.BaseURL != "https://example.com" || len(cfg.CDN.Content) != 1 {
+		t.Fatalf("cdn config = %#v", cfg.CDN)
+	}
+	if got := cfg.CDN.Content[0]; got.SourceDir != "content/blog" || got.RoutePrefix != "/blog" || !got.IncludeTags {
+		t.Fatalf("cdn content config = %#v", got)
+	}
+}
+
+func TestLoadRejectsInvalidCloudflareCDNConfig(t *testing.T) {
+	tests := []struct {
+		name   string
+		cdn    string
+		needle string
+	}{
+		{name: "relative base URL", cdn: `base_url = "/local"\nhosts = ["example.com"]`, needle: "absolute http or https"},
+		{name: "host with scheme", cdn: `base_url = "https://example.com"\nhosts = ["https://example.com"]`, needle: "invalid cdn host"},
+		{name: "base host omitted", cdn: `base_url = "https://example.com"\nhosts = ["www.example.com"]`, needle: "must be listed"},
+		{name: "base URL path", cdn: `base_url = "https://example.com/app"\nhosts = ["example.com"]`, needle: "must not contain a path"},
+		{name: "relative static path", cdn: `base_url = "https://example.com"\nhosts = ["example.com"]\nstatic_paths = ["about"]`, needle: "absolute URL paths"},
+		{name: "partial redirects config", cdn: `base_url = "https://example.com"\nhosts = ["example.com"]\nredirects_file = "AppConstants.toml"`, needle: "must be set together"},
+		{name: "no route sources", cdn: `base_url = "https://example.com"\nhosts = ["example.com"]`, needle: "at least one"},
+		{name: "escaping content source", cdn: `base_url = "https://example.com"\nhosts = ["example.com"]\n[[cdn.content]]\nsource_dir = "../content"\nroute_prefix = "/blog"`, needle: "repo-relative"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			cfgPath := filepath.Join(tmp, "buildybud.toml")
+			content := "schema_version = 1\nstrict = true\n[paths]\nrepo_root = \".\"\nassets_root = \"assets\"\nmanifest_path = \"assets/manifest.json\"\n[cdn]\nenabled = true\n" + strings.ReplaceAll(tt.cdn, `\n`, "\n") + "\n"
+			if err := os.WriteFile(cfgPath, []byte(content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			_, err := Load(cfgPath)
+			if err == nil || !strings.Contains(err.Error(), tt.needle) {
+				t.Fatalf("expected %q error, got %v", tt.needle, err)
+			}
+		})
+	}
+}
+
 func TestLoadRejectsMixedImageConfigModes(t *testing.T) {
 	tmp := t.TempDir()
 	cfgPath := filepath.Join(tmp, "buildybud.toml")
