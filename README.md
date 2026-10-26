@@ -6,7 +6,7 @@ It is specifically built for repos using `go-datastar1` templates and the surrou
 ## Install
 
 ```bash
-	go install github.com/jasonwillschiu/buildybud@v0.12.0
+	go install github.com/jasonwillschiu/buildybud@v0.14.0
 ```
 
 ## Set Up In A Repo
@@ -78,7 +78,7 @@ Inline image paths resolve from the app root selected by `paths.repo_root`. `out
 
 Existing repositories may keep `config_path = "tools/imageopt/config.json"` while migrating. Do not combine `config_path` with inline image fields in the same configuration. New `buildybud init` output uses inline fields unless it discovers an existing imageopt JSON file.
 
-`buildybud css` supports the backward-compatible `single` mode and a `bundles` mode for explicit named entry points. Use `command = "native"` to copy or minify plain CSS with Buildybud's built-in processor and no external CLI. Other command values invoke an external compiler with Tailwind-compatible flags. Bundle mode compiles every entry into a staging directory, audits the staged output, and publishes all fingerprints behind one atomic manifest update. If any compile or audit fails, the current manifest and shipped CSS remain unchanged. `buildybud css audit` checks the currently published bundle files without rebuilding them.
+`buildybud css` supports the backward-compatible `single` mode and a `bundles` mode for explicit named entry points. Use `command = "native"` to copy or minify plain CSS with Buildybud's built-in processor and no external CLI. The native processor inlines every top-level `@import` of a relative path (`./`, `../`, or any `.css` name), recursively, so an entry can stay split into partials: `layer(name)`, bare `layer`, `supports(...)` and a media list wrap the imported content in the matching `@layer`, `@supports` and `@media` blocks, relative `url()` references in imported files are rebased onto the entry's directory, remote `https:`/`//` imports are kept and hoisted to the top, and an import cycle, a missing file, a package name such as `tailwindcss` or a root-relative `/path` fails the build. Other command values invoke an external compiler with Tailwind-compatible flags. Bundle mode compiles every entry into a staging directory, audits the staged output, and publishes all fingerprints behind one atomic manifest update. If any compile or audit fails, the current manifest and shipped CSS remain unchanged. `buildybud css audit` checks the currently published bundle files without rebuilding them.
 
 ```toml
 [css]

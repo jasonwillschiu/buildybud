@@ -1,3 +1,8 @@
+# 0.14.0 - Add: Native CSS import inlining
+- `css.command = "native"` now inlines every top-level `@import` of a relative path, recursively, so a plain-CSS entry can import its partials and ship as one file instead of leaving imports that break against fingerprinted output.
+- `layer(name)`, bare `layer`, `supports(...)` and media lists wrap the imported content in the matching `@layer`, `@supports` and `@media` blocks; relative `url()` references inside imported files are rebased onto the entry's directory; `@charset` in imported files is dropped.
+- Remote `https:` and `//` imports are kept and hoisted to the top of the output. Import cycles, missing files, package names (`tailwindcss`) and root-relative paths fail the build with the importing file named.
+
 # 0.13.0 - Change: Cloudflare-only CDN ownership
 - Replace Bunny/provider branching with one Cloudflare purge path and remove provider flags and environment settings.
 - Move public route inventory into typed `[cdn]` TOML, including static routes, Markdown content roots, tag routes, and redirects.

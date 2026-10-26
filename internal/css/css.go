@@ -90,9 +90,9 @@ func Run(opts Options) error {
 }
 
 func runNative(opts Options) error {
-	input, err := os.ReadFile(opts.Input)
+	input, err := inlineImports(opts.Input)
 	if err != nil {
-		return fmt.Errorf("read css input: %w", err)
+		return err
 	}
 	output := input
 	if opts.Minify {
